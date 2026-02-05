@@ -8,7 +8,7 @@ import bayRing.utils   as utils
 
 class WaveformModel(cpnest.model.Model):
     
-    def __init__(self, t_NR, tM_start, tM_peak, wf_model, N_ds_modes, Kerr_modes, metadata, qnm_cached, l_NR, m_NR, tail=0, tail_modes=None, quadratic_modes=None, const_params=None, KerrBinary_version = 'London2018', KerrBinary_amp_nc_version = 'bmrg-Jmrg', TEOB_NR_fit = 0, TEOB_template = 'qc', quad_mode_flag=1):
+    def __init__(self, t_NR, tM_start, tM_peak, wf_model, N_ds_modes, Kerr_modes, metadata, qnm_cached, l_NR, m_NR, tail=0, tail_modes=None, redshift_modes=None, quadratic_modes=None, const_params=None, KerrBinary_version = 'London2018', KerrBinary_amp_nc_version = 'bmrg-Jmrg', TEOB_NR_fit = 0, TEOB_template = 'qc', quad_mode_flag=1):
 
         self.t_NR                      = t_NR
         self.t_start                   = tM_start
@@ -21,6 +21,7 @@ class WaveformModel(cpnest.model.Model):
         self.qnm_cached                = qnm_cached
         self.l_NR, self.m_NR           = l_NR, m_NR
         self.tail                      = tail
+        self.redshift_modes            = redshift_modes
         self.quadratic_modes           = quadratic_modes
         self.N_ds_modes                = N_ds_modes
         self.tail_modes                = tail_modes
@@ -36,7 +37,7 @@ class WaveformModel(cpnest.model.Model):
     
     def Kerr_waveform(self, params, fixed_params):
 
-        amps, quad_amps, tail_parameters = {}, {}, {}
+        amps, quad_amps, tail_parameters, redshift_amps = {}, {}, {}, {}
         
         # Read-in linear modes.
         for (l_ring, m_ring, n) in self.Kerr_modes:
@@ -51,13 +52,20 @@ class WaveformModel(cpnest.model.Model):
                 tail_string = '{}{}'.format(l_ring, m_ring)
                 tail_parameters[(l_ring, m_ring)] = {}
 
-                tail_amp_value = utils.get_param_override(fixed_params,params,'ln_A_tail_{}'.format(tail_string))
-                tail_phi_value = utils.get_param_override(fixed_params,params, 'phi_tail_{}'.format(tail_string))
-                tail_p_value   = utils.get_param_override(fixed_params,params,   'p_tail_{}'.format(tail_string))
+                tail_amp_value = utils.get_param_override(fixed_params, params,'ln_A_tail_{}'.format(tail_string))
+                tail_phi_value = utils.get_param_override(fixed_params, params, 'phi_tail_{}'.format(tail_string))
+                tail_p_value   = utils.get_param_override(fixed_params, params,   'p_tail_{}'.format(tail_string))
 
                 tail_parameters[(l_ring, m_ring)]['A']   = np.exp(tail_amp_value)
                 tail_parameters[(l_ring, m_ring)]['phi'] =        tail_phi_value
                 tail_parameters[(l_ring, m_ring)]['p']   =        tail_p_value
+
+        if not(self.redshift_modes is None):
+            for (l_rs, m_rs, j_rs) in self.redshift_modes:
+                redshift_string = 'rs_{}{}{}'.format(l_rs, m_rs, j_rs) 
+                amp_value = utils.get_param_override(fixed_params, params,'ln_A_{}'.format(redshift_string))
+                phi_value = utils.get_param_override(fixed_params, params,'phi_{}'.format(redshift_string))
+            redshift_amps[(2, l_rs, m_rs, j_rs)] = np.exp(amp_value) * np.exp(1j*(phi_value))
 
         # Read-in quadratic modes.
         if(self.quadratic_modes is not None):
@@ -94,6 +102,7 @@ class WaveformModel(cpnest.model.Model):
                                    amp_non_prec_sym    = 1                    ,
                                    tail_parameters     = tail_parameters      ,
                                    quadratic_modes     = quad_amps            ,
+                                   redshift_amps       = redshift_amps        ,
                                    quad_lin_prop       = 0                    ,
                                    qnm_cached          = self.qnm_cached      ,
                                    t_ref               = self.t_peak          ,

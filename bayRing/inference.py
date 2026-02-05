@@ -241,7 +241,6 @@ def Dynamic_InferenceModel(base):
     class InferenceModel(base):
 
         """
-        
         Inference model for the ringdown waveform.
 
         Parameters
@@ -292,9 +291,10 @@ def Dynamic_InferenceModel(base):
 
             if(self.wf_model.wf_model=='Kerr'):
                 
-                self.tail            = self.wf_model.tail
-                self.quadratic_modes = self.wf_model.quadratic_modes
-                self.tail_modes      = self.wf_model.tail_modes
+                self.tail            = self.wf_model.tail 
+                self.quadratic_modes = self.wf_model.quadratic_modes  
+                self.tail_modes      = self.wf_model.tail_modes 
+                self.redshift_modes  = self.wf_model.redshift_modes   
 
                 default_bounds = read_default_bounds(self.wf_model.wf_model)   
                 for (l_ring, m_ring, n) in self.Kerr_modes:
@@ -333,7 +333,20 @@ def Dynamic_InferenceModel(base):
                                 single_bounds = read_parameter_bounds(Config, configparser, name, fullname, default_bounds_tail)
                                 self.names.append(fullname)
                                 self.bounds.append(single_bounds)
-        
+
+                if not(self.redshift_modes is None):
+
+                    default_bounds = read_default_bounds(self.wf_model.wf_model) # bounds for redshift modes are the same as for QNMs
+                    for (l_rs, m_rs, j_rs) in self.redshift_modes:
+                        for name in default_bounds.keys():
+                            fullname      = '{}_rs_{}{}{}'.format(name, l_rs, m_rs, j_rs)
+                        try:
+                            self.fixed_params[fullname] = self.Config.getfloat("Priors",'fix-'+fullname)
+                        except(configparser.NoOptionError):
+                            single_bounds = read_parameter_bounds(Config, configparser, name, fullname, default_bounds)
+                            self.names.append(fullname)
+                            self.bounds.append(single_bounds)
+
             elif(self.wf_model.wf_model=='Damped-sinusoids'):
             
                 default_bounds = read_default_bounds(self.wf_model.wf_model)

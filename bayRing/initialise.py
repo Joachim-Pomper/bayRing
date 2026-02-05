@@ -128,6 +128,7 @@ def read_config(Config):
         'QQNM-modes'                       : ''           ,
         'Kerr-tail'                        : 0            ,
         'Kerr-tail-modes'                  : '22'         ,
+        'Kerr-redshift-modes'              : ''           ,
         'KerrBinary-version'               : 'London2018' ,
         'KerrBinary-amplitudes-nc-version' : ''           ,
         'TEOB-NR-fit'                      : 0            ,

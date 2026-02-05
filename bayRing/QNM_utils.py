@@ -289,3 +289,38 @@ def read_tail_modes(modes_input):
         modes.append((l_ring,m_ring))
 
     return modes
+
+def read_redshift_modes(modes_input):
+    """
+
+    Read the redshift mode contributions to linear modes.
+
+    Parameters
+    ----------
+
+    modes_input : string
+        String containing the redshift modes, must be of the form "lmj,lmj,lmj"
+        Where l>=m>0 and j>0 are single digit integers. 
+
+    Returns
+    -------
+
+    modes : list
+        List of the (l,m,j) redshift modes.
+
+    """
+
+    if not(modes_input is ''):
+        modes_list   = modes_input.split(',')
+        modes        = []
+        for i in range(len(modes_list)):
+            if('-' in modes_list[i]): raise ValueError("Invalid redshift mode. lmj = {}. Must hold l>=m>0 and j>0".format(modes_list[i]))
+            l_rs, m_rs, j_rs = int(modes_list[i][0]),  int(modes_list[i][1]), int(modes_list[i][2])
+            if(m_rs > l_rs):  raise ValueError("Invalid redshift mode. lmj = {}. Must hold l>=m>0 and j>0".format(modes_list[i]))
+            modes.append((l_rs, m_rs, j_rs))
+
+    else:
+        modes = None
+
+    return modes
+

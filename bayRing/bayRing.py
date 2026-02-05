@@ -119,6 +119,7 @@ def main():
     
     Kerr_modes, Kerr_quad_modes, qnm_cached = QNM_utils.read_Kerr_modes(parameters['Model']['QNM-modes'], parameters['Model']['QQNM-modes'], parameters['Model']['charge'], parameters['NR-data']['l-NR'], parameters['NR-data']['m'], NR_metadata)
     Kerr_tail_modes                         = QNM_utils.read_tail_modes(parameters['Model']['Kerr-tail-modes'])
+    Kerr_redschift_modes                    = QNM_utils.read_redshift_modes(parameters['Model']['Kerr-redshift-modes'])
 
     # ============#
     # Load model. #
@@ -137,6 +138,7 @@ def main():
                                                 tail                      = parameters['Model']['Kerr-tail']                   ,
                                                 tail_modes                = Kerr_tail_modes                                    ,     
                                                 quadratic_modes           = Kerr_quad_modes                                    , 
+                                                redshift_modes            = Kerr_redschift_modes                               ,
                                                 const_params              = parameters['NR-data']['add-const']                 , 
                                                 KerrBinary_version        = parameters['Model']['KerrBinary-version']              ,
                                                 KerrBinary_amp_nc_version = parameters['Model']['KerrBinary-amplitudes-nc-version'],
