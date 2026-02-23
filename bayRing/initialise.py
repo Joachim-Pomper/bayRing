@@ -112,13 +112,7 @@ def read_config(Config):
         'waveform-type'        : 'strain',
         },
 
-        'Injection-data':
-        {
-        'modes'            : '220,221,320',
-        'times'            : 'from-SXS-NR',
-        'noise'            : None,
-        'tail'             : 0.0,
-        },
+  # TODO: Reimplement injected noise
 
         'Model':
         {

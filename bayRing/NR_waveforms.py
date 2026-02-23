@@ -1,6 +1,9 @@
 # General python imports
-import h5py, numpy as np, os, pandas as pd, subprocess
+import h5py, numpy as np, os, pandas as pd, subprocess, json
 from scipy import interpolate
+
+try:                import configparser
+except ImportError: import ConfigParser as configparser
 
 import sxs
 try   : from cbhdb import simulation
@@ -32,24 +35,6 @@ def get_sxs_version():
     except subprocess.CalledProcessError:
         print("Error while checking sxs version.")
         return None
-
-def read_fake_NR(NR_catalog, fake_NR_modes):
-
-    if(NR_catalog=='fake_NR'):
-
-        fake_NR_modes_string   = fake_NR_modes.replace(',', '_')
-
-        injection_modes_list     = []
-        injection_modes_list_tmp = fake_NR_modes.split(',')
-        for i in range(len(injection_modes_list_tmp)):
-            l_fake_NR,m_fake_NR,n_fake_NR = int(injection_modes_list_tmp[i][0]),int(injection_modes_list_tmp[i][1]),int(injection_modes_list_tmp[i][2])
-            injection_modes_list.append((l_fake_NR,m_fake_NR,n_fake_NR))
-
-    else:
-        fake_NR_modes_string = ''
-        injection_modes_list = None
-
-    return fake_NR_modes_string, injection_modes_list
 
 def read_RWZ_env_simulation_parameters(sim_file):
 
@@ -379,7 +364,7 @@ def read_NR_metadata(NR_sim, NR_catalog):
         NRsim object containing the metadata of the NR simulation.
 
     NR_catalog : str
-        Catalog of the NR simulation. Available options: ['SXS', 'cbhdb', 'charged_raw', 'RIT', 'Teukolsky']
+        Catalog of the NR simulation. Available options: ['SXS', 'cbhdb', 'charged_raw', 'RIT', 'Teukolsky', 'FakeNR']
 
     Returns
     -------
@@ -499,9 +484,9 @@ def read_NR_metadata(NR_sim, NR_catalog):
                     'af'        : NR_sim.af,
 	    }
 
-    elif(NR_catalog=='fake_NR'):
+    elif(NR_catalog=='FakeNR'):
         metadata = {
-                    'q'     : NR_sim.q,
+                    'qf'    : NR_sim.qf,
                     'Mf'    : NR_sim.Mf,
                     'af'    : NR_sim.af,
             }
@@ -520,7 +505,7 @@ class NR_simulation():
     ----------
 
     NR_catalog : str
-        Catalog of the NR simulation. Available options: ['SXS', 'cbhdb', 'charged_raw', 'RIT', 'Teukolsky'].
+        Catalog of the NR simulation. Available options: ['SXS', 'cbhdb', 'charged_raw', 'RIT', 'Teukolsky', 'FakeNR'].
 
     NR_ID : str
         ID of the NR simulation.
@@ -577,10 +562,6 @@ class NR_simulation():
                  perturbation_order                             , 
                  NR_dir                                         , 
                  additional_NR_properties                       , 
-                 injection_modes_list                           , 
-                 injection_times                                , 
-                 injection_noise                                , 
-                 injection_tail                                 , 
                  l                                              , 
                  m                                              , 
                  outdir                                         , 
@@ -615,9 +596,7 @@ class NR_simulation():
         self.outdir                   = outdir
         self.sxs_installed_version    = sxs_installed_version
 
-        self.fake_NR_modes            = injection_modes_list
-        self.injection_noise          = injection_noise
-        self.injection_tail           = injection_tail
+        self.injection_noise          = None # TODO: reimplement setting the noise
 
         self.tM_start                 = tM_start
         self.tM_end                   = tM_end
@@ -630,75 +609,61 @@ class NR_simulation():
         ######################
         
         #IMPROVEME: work in progress for template injections.
-        if(self.NR_catalog=='fake_NR'):
+        if(self.NR_catalog=='FakeNR'):
             
-            t_start, t_end, dt, self.q, self.Mf, self.af, self.A_dict, self.phi_dict, self.tail_dict = self.read_fake_NR_metadata()
+            meta_data, complex_amplitudes = self.read_fake_NR_metadata()
+            self.Mf = meta_data['Mf']
+            self.af = meta_data['af']
+            self.qf = meta_data['qf']  
+            self.ecc = 0.0             # Put eccentricity to zero
+                                       # Practically, this means that peak of signal = peak of amplitude 
+                                       # = t_start, for FakeNR template
 
-            if(injection_times=='from-metadata'):
-
-                self.t_start = t_start
-                self.t_NR    = np.arange(self.t_start, t_end, dt)
-                if(self.t_NR[0] < 0):
-                    self.t_NR = self.t_NR - self.t_NR[0]
-
-            elif(injection_times=='from-SXS-NR'):
-
+            # Choose how to set the injection times
+            if(meta_data["times-from-sxs"]):
                 self.download      = download
-                self.fake_error_NR = NR_error
+                self.t_NR, nr_err_cmplx_sxs, self.t_start = self.extract_data_NR(t_min_mismatch, t_max_mismatch)
 
-                self.t_NR, self.NR_err_cmplx_SXS, self.t_start = self.extract_data_NR(t_min_mismatch, t_max_mismatch)
+            else: 
 
-            else:
-
-                raise ValueError("Unknown times option.")
-                                            
-            modes_input = []
-            modes_input.append(','.join(['{}{}{}'.format(l_ring, m_ring, n) for l_ring, m_ring, n in self.fake_NR_modes]))
-
-            metadata_tmp       = {}
-            metadata_tmp['Mf'] = self.Mf
-            metadata_tmp['af'] = self.af
+                self.t_start = meta_data["t_start"]
+                self.t_NR    = np.arange(self.t_start, meta_data["t_end"], meta_data["dt"])
            
-            _, _, _, _, self.qnm_cached = QNM_utils.read_Kerr_modes(modes_input, None, None, self.l, self.m, metadata_tmp)
+           # cache QNMs
+            _, _, self.qnm_cached = QNM_utils.read_Kerr_modes(
+                ','.join(['{}{}{}'.format(l_rd, m_rd, n_rd) for _, l_rd, m_rd, n_rd in complex_amplitudes["kerr_linear_amps"].keys()]), 
+                '',                   # TODO: Can easily expand to quadratic modes.
+                meta_data['qf'] > 0,  # TODO: Check if non-zero charge implementation is meaningful.
+                self.l, 
+                self.m, 
+                meta_data)
 
-            amps = {}
-        
-            # Read-in linear modes.
-            for (l_ring, m_ring, n) in self.fake_NR_modes:
-                linear_string = '{}{}{}'.format(l_ring, m_ring, n)
-
-                if 'A_{}'.format(linear_string) in self.A_dict.keys(): 
-                    amps[(2, l_ring, m_ring, n)] = self.A_dict['A_{}'.format(linear_string)] * np.exp(1j*(self.phi_dict['phi_{}'.format(linear_string)]))
-                else:
-                    print("Mode not present in the metadata. Please update the metadata or change the input modes to be included in the template for the fake NR data.")
-                    exit()
-
-            ringdown_fun = wf.KerrBH(self.t_start                         ,
-                                     self.Mf                              ,
-                                     self.af                              ,
-                                     amps                                 ,
-                                     0.0                                  , # distance,    overrun by geom
-                                     0.0                                  , # inclination, overrun by geom
-                                     0.0                                  , # phi,         overrun by geom
+            # calculate waveform
+            print(complex_amplitudes["kerr_linear_amps"])
+            ringdown_fun = wf.KerrBH(self.t_start                                 ,
+                                     self.Mf                                      , 
+                                     self.af                                      ,
+                                     complex_amplitudes["kerr_linear_amps"]       ,
+                                     0.0                                          , # distance,    overrun by geom
+                                     0.0                                          , # inclination, overrun by geom
+                                     0.0                                          , # phi,         overrun by geom
                                     
-                                     reference_amplitude = 0.0            ,
-                                     geom                = 1              ,
-                                     qnm_fit             = 0              ,
-                                     qnm_interpolants    = None           ,
+                                     reference_amplitude = 0.0                    ,
+                                     geom                = 1                      ,
+                                     qnm_fit             = 0                      ,
+                                     qnm_interpolants    = None                   ,
                                     
-                                     Spheroidal          = 0              , # Spheroidal harmonics, overrun by geom
-                                     amp_non_prec_sym    = 1              ,
-                                     tail_parameters     = {}             ,
-                                     quadratic_modes     = {}             ,
-                                     quad_lin_prop       = 0              ,
-                                     qnm_cached          = self.qnm_cached,
-
-                                     charge              = 0              ,
-                                     TGR_params          = None           ,
+                                     Spheroidal          = 0                      , # Spheroidal harmonics, overrun by geom
+                                     amp_non_prec_sym    = 1                      ,
+                                     tail_parameters     = {}                     , # TODO: Extend to have this 
+                                     quadratic_modes     = {}                     , # TODO: Extend to have this
+                                     quad_lin_prop       = 0                      ,
+                                     qnm_cached          = self.qnm_cached        ,
+                                     charge              = 0                      ,
+                                     TGR_params          = None                   ,
                                      )
             
             _, _, _, self.NR_r, self.NR_i = ringdown_fun.waveform(self.t_NR)
-
             self.NR_r = -self.NR_r
 
         elif(self.NR_catalog=='charged_raw'):
@@ -861,6 +826,9 @@ class NR_simulation():
             t_res,     NR_r_res,  NR_i_res  = None, None, None
             t_extr,    NR_r_extr, NR_i_extr = None, None, None
 
+        else:
+            raise ValueError(f"Catalog unknown: {self.NR_catalog}")
+
         # Auxiliary quantities for the reference NR simulation.
         self.NR_cpx                         = self.NR_r + 1j * self.NR_i
         self.NR_amp, self.NR_phi            = waveform_utils.amp_phase_from_re_im(self.NR_r, self.NR_i)
@@ -1013,7 +981,7 @@ class NR_simulation():
                 error_value                = float(NR_error.split('-')[-1])
                 self.NR_err_cmplx          = self.generate_constant_error(error_value)
        
-        elif(self.NR_catalog=='fake_NR'):
+        elif(self.NR_catalog=='FakeNR'):
             
             if('gaussian' in NR_error):
                 error_value                = float(NR_error.split('-')[-1])
@@ -1039,7 +1007,7 @@ class NR_simulation():
                         self.NR_i[i] += error_value
 
             elif(NR_error=='from-SXS-NR'):
-                self.NR_err_cmplx          = self.NR_err_cmplx_SXS
+                self.NR_err_cmplx = nr_err_cmplx_sxs
             
                 if not(self.injection_noise==None):
                     for i in range(len(self.NR_r)):
@@ -1082,7 +1050,7 @@ class NR_simulation():
         print("\n* The peak time is t_peak = {}".format(self.t_peak))
         np.savetxt(os.path.join(self.outdir,'Peak_quantities/Peak_time.txt'), np.array([self.t_peak]), header = "t_peak [sim units]")
        
-    def extract_data_NR(self, t_min_mismatch, t_max_mismatch):
+    def extract_data_NR(self, t_min_mismatch, t_max_mismatch, nr_error):
 
         # Build NR time axis.
         if(self.res_level==-1):
@@ -1099,7 +1067,7 @@ class NR_simulation():
         NR_amp, NR_phi               = waveform_utils.amp_phase_from_re_im(NR_r, NR_i)
 
         # Build NR error array.
-        if(self.fake_error_NR=='from-SXS-NR'):
+        if(nr_error == 'from-SXS-NR'):
             t_res,  NR_r_res,  NR_i_res  = self.read_waveform_lm_from_SXS(self.extrap_order,   self.res_level-1)
             t_extr, NR_r_extr, NR_i_extr = self.read_waveform_lm_from_SXS(self.extrap_order+1, self.res_level)
 
@@ -1133,89 +1101,93 @@ class NR_simulation():
         
         Returns
         -------
-
-        t_start
-            Initial time to generate the data.
-        t_end
-            Final time for which to generate the data
-        dt
-            Time step between each point.
-        q
-            Mass ratio.
-        Mf
-            Final mass of the remnant black hole.
-        af
-            Final dimensionless spin of the remnant black hole.
-        A_dict
-            Dictionary of the QNM modes amplitudes.
-        phi_dict
-            Dictionary of the QNM modes phases.
         """
 
-        path_metadata = self.NR_dir + f'/metadata_{self.NR_ID}.txt'
+        metadata_fname = 'meta_data.ini' if (self.NR_ID == '') else f'meta_data_{self.NR_ID}.ini'
+        path_metadata = os.path.join(self.NR_dir, metadata_fname)
+        if not(os.path.exists(path_metadata)):
+            raise FileNotFoundError(f"Meta data does not seem to exist: {path_metadata}")    
+        
+        Config = configparser.ConfigParser()
+        Config.read(path_metadata)
 
-        with open(path_metadata, 'r') as input_file:
-
-            for line in input_file:
+        meta_data_default = {
+            # signal-parameter
+            't_start'               : 0.0  ,
+            't_end'                 : 100.0,
+            'dt'                    : 0.2  ,
             
-                if line.startswith("t_start"):
-                    t_start = float(line.split(':')[1].strip().split()[0])
-                
-                elif line.startswith("t_end"):
-                    t_end   = float(line.split(':')[1].strip().split()[0])
+            # mimick-sxs
+            'times-from-sxs'        : False,
+            'error-from-sxs'        : False,
+            'sxs-simulation'        : ''   ,
+            
+            # event-parameter
+            'final-mass'            : 67.0,
+            'final-spin'            : 0.67,
+            'final-charge'          : 0.0,
 
-                elif line.startswith("dt"):
-                    dt      = float(line.split(':')[1].strip().split()[0])
+            # kerr-model    
+            'kerr-amplitudes'       : {},
+            'kerr-phases'           : {},
+            'kerr-tail-amplitudes'  : {},
+            'kerr-tail-phases'      : {},
+            'kerr-tail-exponents'   : {},
 
-                elif line.startswith("q"):
-                    q       = float(line.split(':')[1].strip().split()[0])
+        }
 
-                elif line.startswith("Mf"):
-                    Mf      = float(line.split(':')[1].strip().split()[0])
+        event_param_map = {
+            'final-mass'            : 'Mf',
+            'final-spin'            : 'af',
+            'final-charge'          : 'qf',
+        }
 
-                elif line.startswith("af"):
-                    af      = float(line.split(':')[1].strip().split()[0])
-                    
-                elif line.startswith("A_220"):
-                    A_220   = float(line.split(':')[1].strip().split()[0])
-                    
-                elif line.startswith("phi_220"):
-                    phi_220 = float(line.split(':')[1].strip().split()[0])
-                
-                elif line.startswith("A_220"):
-                    A_220   = float(line.split(':')[1].strip().split()[0])
-                    
-                elif line.startswith("phi_220"):
-                    phi_220 = float(line.split(':')[1].strip().split()[0])
-                
-                elif line.startswith("A_221"):
-                    A_221   = float(line.split(':')[1].strip().split()[0])
-                    
-                elif line.startswith("phi_221"):
-                    phi_221 = float(line.split(':')[1].strip().split()[0])
+        # Read meta data
+        meta_data = {}
+        for key in meta_data_default.keys():
 
-                elif line.startswith("A_320"):
-                    A_320   = float(line.split(':')[1].strip().split()[0])
-                    
-                elif line.startswith("phi_320"):
-                    phi_320 = float(line.split(':')[1].strip().split()[0])
-              
-                elif line.startswith("A_22_tail"):
-                    A_22_tail = float(line.split(':')[1].strip().split()[0])
-    
-                elif line.startswith("p_22_tail"):
-                    p_22_tail = float(line.split(':')[1].strip().split()[0])
-                
-                elif line.startswith("phi_22_tail"):
-                    phi_22_tail = float(line.split(':')[1].strip().split()[0])
-                 
-                    break
+            keytype = type(meta_data_default[key])
+            try:
+                if   "kerr-" in key: meta_data[key]                  = json.loads(Config.get("kerr-model"   , key))
+                elif "sxs"   in key: meta_data[key]                  = keytype(Config.get("mimick-sxs"      , key))
+                elif "final" in key: meta_data[event_param_map[key]] = keytype(Config.get("event-parameter" , key))  
+                else               : meta_data[key]                  = keytype(Config.get("signal-parameter", key))
+  
+            except (KeyError, configparser.NoOptionError, TypeError):
+                meta_data[key] = meta_data_default[key]
+        
+        # critical checks:
+        if meta_data["t_start"] < 0.0: 
+            raise ValueError("Input 't_start' negative. Must be positive!")
 
-        A_dict    = {'A_220' : A_220, 'A_221' : A_221, 'A_320' : A_320}
-        phi_dict  = {'phi_220' : phi_220, 'phi_221' : phi_221, 'phi_320' : phi_320}
-        tail_dict = {'A_22_tail' : A_22_tail, 'p_22_tail' : p_22_tail, 'phi_22_tail' : phi_22_tail}
-       
-        return t_start, t_end, dt, q, Mf, af, A_dict, phi_dict, tail_dict
+        # Format Kerr linear modes
+        complex_amplitudes = {}
+        try:
+            complex_amplitudes["kerr_linear_amps"] = {}
+            for key in list(meta_data['kerr-amplitudes'].keys()):
+                # Syntax: (s,l,m,n)
+                if ('-' in key): new_key = (int(key[0]), int(key[1]), -int(key[3]), int(key[4]))
+                else           : new_key = (int(key[0]), int(key[1]),  int(key[2]), int(key[3]))
+                complex_amplitudes["kerr_linear_amps"][new_key] = meta_data['kerr-amplitudes'][key]*np.exp(1j*meta_data['kerr-phases'][key])
+        except (AttributeError, KeyError):
+            pass
+
+        # Format Kerr tail parameter
+        try:
+            complex_amplitudes["kerr_tail_amps"] = {}
+            for key in list(meta_data['kerr-tail-amplitudes'].keys()):
+                # Syntax: (l,m)
+                if ('-' in key): new_key = (int(key[0]), -int(key[1]))
+                else           : new_key = (int(key[0]),  int(key[1]))
+                complex_amplitudes["kerr_tail_amps"][new_key]        = {}
+                complex_amplitudes["kerr_tail_amps"][new_key]['A'  ] = meta_data['kerr-tail-amplitudes'][key]
+                complex_amplitudes["kerr_tail_amps"][new_key]['phi'] = meta_data['kerr-tail-phases'    ][key]
+                complex_amplitudes["kerr_tail_amps"][new_key]['p'  ] = meta_data['kerr-tail-exponents' ][key]
+        except (AttributeError, KeyError):
+            pass
+
+
+        return meta_data, complex_amplitudes
         
     def read_cbhdb_metadata(self):
         
