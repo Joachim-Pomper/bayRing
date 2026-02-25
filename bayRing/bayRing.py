@@ -78,7 +78,6 @@ def main():
     # ==============#
 
     print_section('NR data loading')
-    parameters['Injection-data']['modes-list'] = NR_waveforms.read_fake_NR(parameters['NR-data']['catalog'], parameters['Injection-data']['modes'])
 
     #NR simulation object
     NR_sim      = NR_waveforms.NR_simulation(parameters['NR-data']['catalog']                       , 
@@ -88,10 +87,6 @@ def main():
                                              parameters['NR-data']['pert-order']                    , 
                                              parameters['NR-data']['dir']                           , 
                                              parameters['NR-data']['properties-file']               ,
-                                             parameters['Injection-data']['modes-list']             , 
-                                             parameters['Injection-data']['times']                  , 
-                                             parameters['Injection-data']['noise']                  , 
-                                             parameters['Injection-data']['tail']                   , 
                                              parameters['NR-data']['l-NR']                          , 
                                              parameters['NR-data']['m']                             , 
                                              parameters['I/O']['outdir']                            ,
