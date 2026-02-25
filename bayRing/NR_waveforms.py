@@ -632,36 +632,37 @@ class NR_simulation():
            # cache QNMs
             _, _, self.qnm_cached = QNM_utils.read_Kerr_modes(
                 ','.join(['{}{}{}'.format(l_rd, m_rd, n_rd) for _, l_rd, m_rd, n_rd in complex_amplitudes["kerr_linear_amps"].keys()]), 
-                '',           # TODO: Can easily expand to quadratic modes.
-                self.qf > 0,  # TODO: Check if non-zero charge implementation is meaningful.
+                '',                   # TODO: Can easily expand to quadratic modes.
+                self.qf > 0,          # TODO: Check if non-zero charge implementation is meaningful.
                 self.l, 
                 self.m, 
                 {"Mf":self.Mf , "af":self.af, "qf":self.qf})
 
             # calculate waveform
-            print(complex_amplitudes["kerr_linear_amps"])
-            ringdown_fun = wf.KerrBH(self.t_start                                 ,
-                                     self.Mf                                      , 
-                                     self.af                                      ,
-                                     complex_amplitudes["kerr_linear_amps"]       ,
-                                     0.0                                          , # distance,    overrun by geom
-                                     0.0                                          , # inclination, overrun by geom
-                                     0.0                                          , # phi,         overrun by geom
+            ringdown_fun = wf.KerrBH(
+                self.t_start                                              ,
+                self.Mf                                                   ,  
+                self.af                                                   ,
+                complex_amplitudes["kerr_linear_amps"]                    ,
+                0.0                                                       , # distance,    overrun by geom
+                0.0                                                       , # inclination, overrun by geom
+                0.0                                                       , # phi,         overrun by geom
+                                     
+                reference_amplitude = 0.0                                 ,
+                geom                = 1                                   ,
+                qnm_fit             = 0                                   ,
+                qnm_interpolants    = None                                ,
                                     
-                                     reference_amplitude = 0.0                    ,
-                                     geom                = 1                      ,
-                                     qnm_fit             = 0                      ,
-                                     qnm_interpolants    = None                   ,
-                                    
-                                     Spheroidal          = 0                      , # Spheroidal harmonics, overrun by geom
-                                     amp_non_prec_sym    = 1                      ,
-                                     tail_parameters     = {}                     , # TODO: Extend to have this 
-                                     quadratic_modes     = {}                     , # TODO: Extend to have this
-                                     quad_lin_prop       = 0                      ,
-                                     qnm_cached          = self.qnm_cached        ,
-                                     charge              = 0                      ,
-                                     TGR_params          = None                   ,
-                                     )
+                Spheroidal          = 0                                   , # Spheroidal harmonics, overrun by geom
+                amp_non_prec_sym    = 1                                   ,
+                tail_parameters     = {}                                  , # TODO: Extend to have this 
+                quadratic_modes     = {}                                  , # TODO: Extend to have this
+                redshift_amps       = complex_amplitudes["redshift_amps"] ,
+                quad_lin_prop       = 0                                   ,
+                qnm_cached          = self.qnm_cached                     ,
+                charge              = 0                                   ,
+                TGR_params          = None                                ,
+                )
             
             _, _, _, self.NR_r, self.NR_i = ringdown_fun.waveform(self.t_NR)
             self.NR_r = -self.NR_r
@@ -1113,26 +1114,28 @@ class NR_simulation():
 
         meta_data_default = {
             # signal-parameter
-            't_start'               : 0.0  ,
-            't_end'                 : 100.0,
-            'dt'                    : 0.2  ,
+            't_start'                 : 0.0  ,
+            't_end'                   : 100.0,
+            'dt'                      : 0.2  ,
             
             # mimick-sxs
-            'times-from-sxs'        : False,
-            'error-from-sxs'        : False,
-            'sxs-simulation'        : ''   ,
+            'times-from-sxs'          : False,
+            'error-from-sxs'          : False,
+            'sxs-simulation'          : ''   ,
             
             # event-parameter
-            'final-mass'            : 67.0,
-            'final-spin'            : 0.67,
-            'final-charge'          : 0.0,
+            'final-mass'              : 67.0,
+            'final-spin'              : 0.67,
+            'final-charge'            : 0.0,
 
             # kerr-model    
-            'kerr-amplitudes'       : {},
-            'kerr-phases'           : {},
-            'kerr-tail-amplitudes'  : {},
-            'kerr-tail-phases'      : {},
-            'kerr-tail-exponents'   : {},
+            'kerr-amplitudes'         : {},
+            'kerr-phases'             : {},
+            'kerr-tail-amplitudes'    : {},
+            'kerr-tail-phases'        : {},
+            'kerr-tail-exponents'     : {},
+            'kerr-redshift-amplitudes': {},
+            'kerr-redshift-phases'    : {},
 
         }
 
@@ -1180,6 +1183,18 @@ class NR_simulation():
         except (AttributeError, KeyError):
             pass
 
+        # Format redshift modes
+        try:
+            print(meta_data['kerr-redshift-amplitudes'])
+            complex_amplitudes["redshift_amps"] = {}
+            for key in list(meta_data['kerr-redshift-amplitudes'].keys()):
+                # Syntax: (s,l,m,n)
+                if ('-' in key): new_key = (int(key[0]), int(key[1]), -int(key[3]), int(key[4]))
+                else           : new_key = (int(key[0]), int(key[1]),  int(key[2]), int(key[3]))
+                cpx_amp = meta_data['kerr-redshift-amplitudes'][key]*np.exp(1j*meta_data['kerr-redshift-phases'][key])
+                complex_amplitudes["redshift_amps"][new_key] = cpx_amp
+        except (AttributeError, KeyError):
+            pass
 
         return meta_data, complex_amplitudes
         
