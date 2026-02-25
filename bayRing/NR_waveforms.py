@@ -612,12 +612,12 @@ class NR_simulation():
         if(self.NR_catalog=='FakeNR'):
             
             meta_data, complex_amplitudes = self.read_fake_NR_metadata()
-            self.Mf = meta_data['Mf']
-            self.af = meta_data['af']
-            self.qf = meta_data['qf']  
-            self.ecc = 0.0             # Put eccentricity to zero
-                                       # Practically, this means that peak of signal = peak of amplitude 
-                                       # = t_start, for FakeNR template
+            self.Mf = meta_data['final-mass']
+            self.af = meta_data['final-spin']
+            self.qf = meta_data['final-charge']  
+            self.ecc = 0.0  # Put eccentricity to zero
+                            # Practically, this means that peak of signal = peak of amplitude 
+                            # = t_start, for FakeNR template
 
             # Choose how to set the injection times
             if(meta_data["times-from-sxs"]):
@@ -1136,22 +1136,16 @@ class NR_simulation():
 
         }
 
-        event_param_map = {
-            'final-mass'            : 'Mf',
-            'final-spin'            : 'af',
-            'final-charge'          : 'qf',
-        }
-
         # Read meta data
         meta_data = {}
         for key in meta_data_default.keys():
 
             keytype = type(meta_data_default[key])
             try:
-                if   "kerr-" in key: meta_data[key]                  = json.loads(Config.get("kerr-model"   , key))
-                elif "sxs"   in key: meta_data[key]                  = keytype(Config.get("mimick-sxs"      , key))
-                elif "final" in key: meta_data[event_param_map[key]] = keytype(Config.get("event-parameter" , key))  
-                else               : meta_data[key]                  = keytype(Config.get("signal-parameter", key))
+                if   "kerr-" in key: meta_data[key] = json.loads(Config.get("kerr-model"   , key))
+                elif "sxs"   in key: meta_data[key] = keytype(Config.get("mimick-sxs"      , key))
+                elif "final" in key: meta_data[key] = keytype(Config.get("event-parameter" , key))  
+                else               : meta_data[key] = keytype(Config.get("signal-parameter", key))
   
             except (KeyError, configparser.NoOptionError, TypeError):
                 meta_data[key] = meta_data_default[key]
