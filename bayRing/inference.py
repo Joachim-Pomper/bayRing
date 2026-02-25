@@ -340,12 +340,12 @@ def Dynamic_InferenceModel(base):
                     for (l_rs, m_rs, j_rs) in self.redshift_modes:
                         for name in default_bounds.keys():
                             fullname      = '{}_rs_{}{}{}'.format(name, l_rs, m_rs, j_rs)
-                        try:
-                            self.fixed_params[fullname] = self.Config.getfloat("Priors",'fix-'+fullname)
-                        except(configparser.NoOptionError):
-                            single_bounds = read_parameter_bounds(Config, configparser, name, fullname, default_bounds)
-                            self.names.append(fullname)
-                            self.bounds.append(single_bounds)
+                            try:
+                                self.fixed_params[fullname] = self.Config.getfloat("Priors",'fix-'+fullname)
+                            except(configparser.NoOptionError):
+                                single_bounds = read_parameter_bounds(Config, configparser, name, fullname, default_bounds)
+                                self.names.append(fullname)
+                                self.bounds.append(single_bounds)
 
             elif(self.wf_model.wf_model=='Damped-sinusoids'):
             
