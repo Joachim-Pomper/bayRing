@@ -632,11 +632,11 @@ class NR_simulation():
            # cache QNMs
             _, _, self.qnm_cached = QNM_utils.read_Kerr_modes(
                 ','.join(['{}{}{}'.format(l_rd, m_rd, n_rd) for _, l_rd, m_rd, n_rd in complex_amplitudes["kerr_linear_amps"].keys()]), 
-                '',                   # TODO: Can easily expand to quadratic modes.
-                meta_data['qf'] > 0,  # TODO: Check if non-zero charge implementation is meaningful.
+                '',           # TODO: Can easily expand to quadratic modes.
+                self.qf > 0,  # TODO: Check if non-zero charge implementation is meaningful.
                 self.l, 
                 self.m, 
-                meta_data)
+                {"Mf":self.Mf , "af":self.af, "qf":self.qf})
 
             # calculate waveform
             print(complex_amplitudes["kerr_linear_amps"])
