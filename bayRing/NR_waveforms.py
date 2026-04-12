@@ -665,7 +665,6 @@ class NR_simulation():
                 )
             
             _, _, _, self.NR_r, self.NR_i = ringdown_fun.waveform(self.t_NR)
-            self.NR_r = -self.NR_r
 
         elif(self.NR_catalog=='charged_raw'):
 
