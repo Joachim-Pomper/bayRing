@@ -626,12 +626,9 @@ class NR_simulation():
             nr_data  = self.read_nr_data_from_h5()
             self.t_NR    = nr_data["times"]
 
-            # For the minus of the real part, see also 
-            # WaveformModel.waveform in template_waveforms.py (at the very end)
-            data_cpx     = nr_data["complex_strain"]
-            self.NR_r    = - np.real(data_cpx)
-            self.NR_i    = np.imag(data_cpx)
-            self.NR_cpx  = self.NR_r  + 1j*self.NR_i
+            self.NR_cpx  = nr_data["complex_strain"]
+            self.NR_r    = np.real(self.NR_cpx)
+            self.NR_i    = np.imag(self.NR_cpx)
 
             nr_err_cmplx = nr_data["complex_error"] # can be used via "manual"
 

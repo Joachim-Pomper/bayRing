@@ -314,7 +314,13 @@ class WaveformModel(cpnest.model.Model):
             self.wf_r = self.wf_r + self.const_r
             self.wf_i = self.wf_i + self.const_i
 
-        # UNDERSTAND WHY!!!!
+        # Change the QNM frequency convention 
+        # pyRing  : h_+ + ih_x = exp(i omega t) with omega_220  = f + 1j/tau
+        # bayRing : h_+ + ih_x = exp(-i omega t) with omega_220 = f - 1j/tau 
+        # with f,tau >0
+        # Attention: This changes phases definition too.
+        # Important for injections or when setting up FromH5 or FakeNR catalog runs. 
+        # TODO: Double check that statement 
         if not(self.wf_model=='KerrBinary'): self.wf_r = -self.wf_r
 
         return self.wf_r + 1j * self.wf_i
