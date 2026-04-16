@@ -292,7 +292,7 @@ A dot is present at the end of each description line and is not to be intended a
         
         dir                     Absolute path of NR local data.                                                                     Default: ''.
         
-        catalog                 NR catalog used. Available options: ['SXS', 'RIT', 'RWZ-env', 'Teukolsky', 'cbhdb', 'charged_raw', 'fake_NR']. Default: 'SXS'.
+        catalog                 NR catalog used. Available options: ['SXS', 'RIT', 'RWZ-env', 'Teukolsky', 'cbhdb', 'charged_raw', 'FakeNR', 'FromH5']. Default: 'SXS'.
         
         sxs-installed-version   Version of the sxs package.                                                                         Default: "2025.0.10".
 

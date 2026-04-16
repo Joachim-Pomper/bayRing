@@ -483,6 +483,13 @@ def read_NR_metadata(NR_sim, NR_catalog):
                     'Mf'        : NR_sim.Mf,
                     'af'        : NR_sim.af,
 	    }
+    elif(NR_catalog=='FromH5'):
+        metadata = {
+                'qf'    : NR_sim.qf,
+                'Mf'    : NR_sim.Mf,
+                'af'    : NR_sim.af,
+                'ecc'   : NR_sim.ecc,
+        }
 
     elif(NR_catalog=='FakeNR'):
         metadata = {
@@ -608,8 +615,23 @@ class NR_simulation():
         # Read-in simulation #
         ######################
         
+        if(self.NR_catalog=='FromH5'):
+
+            meta_data = self.read_metadata_from_h5()
+            self.Mf  = meta_data['final-mass']
+            self.af  = meta_data['final-spin']
+            self.qf  = meta_data['final-charge']  
+            self.ecc = meta_data['eccentricity']  
+
+            nr_data  = self.read_nr_data_from_h5()
+            self.t_NR    = nr_data["times"]
+            self.NR_cpx  = nr_data["complex_strain"]
+            self.NR_r    = np.real(self.NR_cpx)
+            self.NR_i    = np.imag(self.NR_cpx)
+            nr_err_cmplx = nr_data["complex_error"] # can be used via "manual"
+
         #IMPROVEME: work in progress for template injections.
-        if(self.NR_catalog=='FakeNR'):
+        elif(self.NR_catalog=='FakeNR'):
             
             meta_data, complex_amplitudes = self.read_fake_NR_metadata()
             self.Mf = meta_data['final-mass']
@@ -981,6 +1003,15 @@ class NR_simulation():
                 error_value                = float(NR_error.split('-')[-1])
                 self.NR_err_cmplx          = self.generate_constant_error(error_value)
        
+        elif(self.NR_catalog=='FromH5'):
+
+            if('loaded' in NR_error):
+                self.NR_err_cmplx          = nr_err_cmplx
+
+            elif('constant' in NR_error):
+                error_value                = float(NR_error.split('-')[-1])
+                self.NR_err_cmplx          = self.generate_constant_error(error_value)
+
         elif(self.NR_catalog=='FakeNR'):
             
             if('gaussian' in NR_error):
@@ -1086,7 +1117,43 @@ class NR_simulation():
         t_peak   = t_NR[np.argmax(NR_amp)]
 
         return t_NR, NR_err_cmplx, t_peak
+    
+    def read_metadata_from_h5(self):
+        """Read waveform metadata from the simulation HDF5 file."""
+        file_name = os.path.join(self.NR_dir, f"{self.NR_ID}.h5")
+
+        required_fields = ["final-mass", "final-spin", "final-charge", "eccentricity"]
+        with h5py.File(file_name, "r") as fin:
+            meta_group = fin["meta_data"]
+            meta_data = {key: meta_group.attrs[key] for key in meta_group.attrs.keys()}
+
+            missing_fields = [field for field in required_fields if field not in meta_data]
+            if missing_fields:
+                raise KeyError(
+                    f"Missing required metadata field(s) in {file_name}: {', '.join(missing_fields)}"
+                )
+            
+        return meta_data
+    
+    def read_nr_data_from_h5(self):
+        """Read waveform arrays from the simulation HDF5 file.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the `times`, `complex_strain`, and
+            `complex_error` arrays stored under the ``nr_data`` group.
+        """
+        file_name = os.path.join(self.NR_dir, f"{self.NR_ID}.h5")
         
+        with h5py.File(file_name, "r") as f:
+            nr_group = f["nr_data"]
+            return {
+                "times"         : nr_group["times"][()],
+                "complex_strain": nr_group["complex_strain"][()],
+                "complex_error" : nr_group["complex_error"][()],
+            }
+
     # FIXME: this function should be cleaned up
     def read_fake_NR_metadata(self):
         
