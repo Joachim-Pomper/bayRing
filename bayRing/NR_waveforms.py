@@ -626,11 +626,13 @@ class NR_simulation():
             nr_data  = self.read_nr_data_from_h5()
             self.t_NR    = nr_data["times"]
 
-            self.NR_cpx  = nr_data["complex_strain"]
-            self.NR_r    = np.real(self.NR_cpx)
-            self.NR_i    = np.imag(self.NR_cpx)
+            self.NR_r    = nr_data["hp_strain"]
+            self.NR_i    = nr_data["hc_strain"]
+            self.NR_cpx  = self.NR_r + 1j *self.NR_i
 
-            nr_err_cmplx = nr_data["complex_error"] # can be used via "manual"
+            hp_err       = nr_data["hp_strain"]
+            hc_err       = nr_data["hc_strain"]
+            nr_err_cmplx = hp_err + 1j * hc_err # Can be used via NR_error="loaded"
 
         #IMPROVEME: work in progress for template injections.
         elif(self.NR_catalog=='FakeNR'):
@@ -1154,8 +1156,10 @@ class NR_simulation():
             nr_group = f["nr_data"]
             return {
                 "times"         : nr_group["times"][()],
-                "complex_strain": nr_group["complex_strain"][()],
-                "complex_error" : nr_group["complex_error"][()],
+                "hp_strain"     : nr_group["hp_strain"][()],
+                "hc_strain"     : nr_group["hc_strain"][()],
+                "hp_error"     : nr_group["hp_error"][()],
+                "hc_error"     : nr_group["hc_error"][()],
             }
 
     # FIXME: this function should be cleaned up
