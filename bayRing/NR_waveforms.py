@@ -17,6 +17,7 @@ import pyRing.waveform        as wf
 
 twopi = 2.*np.pi
 
+<<<<<<< HEAD
 def get_sxs_version():
     """
     Get the installed version of the sxs package.
@@ -35,6 +36,25 @@ def get_sxs_version():
     except subprocess.CalledProcessError:
         print("Error while checking sxs version.")
         return None
+=======
+def read_fake_NR(NR_catalog, fake_NR_modes):
+
+    if(NR_catalog=='fake_NR'):
+
+        fake_NR_modes_string   = fake_NR_modes.replace(',', '_')
+
+        injection_modes_list     = []
+        injection_modes_list_tmp = fake_NR_modes.split(',')
+        for i in range(len(injection_modes_list_tmp)):
+            l_fake_NR,m_fake_NR,n_fake_NR = int(injection_modes_list_tmp[i][0]),int(injection_modes_list_tmp[i][1]),int(injection_modes_list_tmp[i][2])
+            injection_modes_list.append((l_fake_NR,m_fake_NR,n_fake_NR))
+
+    else:
+        fake_NR_modes_string = ''
+        injection_modes_list = None
+
+    return fake_NR_modes_string, injection_modes_list
+>>>>>>> main
 
 def read_RWZ_env_simulation_parameters(sim_file):
 
@@ -146,13 +166,14 @@ def convert_resolution_level_Teukolsky(res_level):
 
 class Waveform_rit(object):
 
-    def __init__(self, NR_data_path='', csv_path='', ID='', ell=2, m=2, resolution_level=100):
+    def __init__(self, NR_data_path='', csv_path='', fit_path='', ID='', ell=2, m=2, resolution_level=100):
 
         self.base             = NR_data_path
         self.metadata_path    = os.path.join(NR_data_path, 'Metadata')
         self.waveform_path    = os.path.join(NR_data_path, 'Data')
         self.psi4_path        = os.path.join(NR_data_path, 'Data/Psi4')
         self.csv_path         = csv_path 
+        self.fit_path         = fit_path
         self.ID               = ID 
         self.ell              = ell
         self.m                = m
@@ -176,10 +197,18 @@ class Waveform_rit(object):
         ID_str = str(self.ID)
 
         possible_name_formats_list = [
-                                        os.path.join(self.base, f'RIT_eBBH_{ID_str}-n{self.resolution_level}-ecc_Metadata.txt'    ),
-                                        os.path.join(self.base, f'RIT:eBBH:{ID_str}-n{self.resolution_level}-ecc_Metadata.txt'    ),
+                                        os.path.join(self.base, f'RIT_eBBH_{ID_str}-n{self.resolution_level}-ecc_Metadata.txt'),
+                                        os.path.join(self.base, f'RIT:eBBH:{ID_str}-n{self.resolution_level}-ecc_Metadata.txt'),
+                                        os.path.join(self.base, f'RIT_BBH_{ID_str}-n{self.resolution_level}-id0_Metadata.txt'),
+                                        os.path.join(self.base, f'RIT:BBH:{ID_str}-n{self.resolution_level}-id0_Metadata.txt'),
+                                        os.path.join(self.base, f'RIT_BBH_{ID_str}-n{self.resolution_level}-id1_Metadata.txt'),
+                                        os.path.join(self.base, f'RIT:BBH:{ID_str}-n{self.resolution_level}-id1_Metadata.txt'),
+                                        os.path.join(self.base, f'RIT_BBH_{ID_str}-n{self.resolution_level}-id2_Metadata.txt'),
+                                        os.path.join(self.base, f'RIT:BBH:{ID_str}-n{self.resolution_level}-id2_Metadata.txt'),
+                                        os.path.join(self.base, f'RIT_BBH_{ID_str}-n{self.resolution_level}-id3_Metadata.txt'),
+                                        os.path.join(self.base, f'RIT:BBH:{ID_str}-n{self.resolution_level}-id3_Metadata.txt')
                                      ]
-        
+
         possible_name_formats_list = possible_name_formats_list
         for name_format in possible_name_formats_list:
             try:
@@ -494,7 +523,7 @@ def read_NR_metadata(NR_sim, NR_catalog):
     else: raise ValueError("Invalid option for NR catalog: {}".format(NR_catalog))
 
     return metadata
-
+    
 class NR_simulation():
 
     """
@@ -561,12 +590,15 @@ class NR_simulation():
                  extrap_order                                   , 
                  perturbation_order                             , 
                  NR_dir                                         , 
-                 additional_NR_properties                       , 
+                 additional_NR_properties                       ,
+                 fits                                           , 
+                 injection_modes_list                           , 
+                 injection_times                                , 
+                 injection_noise                                , 
+                 injection_tail                                 , 
                  l                                              , 
                  m                                              , 
                  outdir                                         , 
-                 sxs_installed_version                          ,
-                 sxs_local                                      ,   
                  waveform_type  = 'strain'                      ,
                  download       = False                         , 
                  NR_error       = 'align-with-mismatch-res-only', 
@@ -592,9 +624,9 @@ class NR_simulation():
         self.pert_order               = perturbation_order
 
         self.NR_dir                   = NR_dir
-        self.additional_NR_properties = additional_NR_properties
+        self.additional_NR_properties = utils.normalize_optional_path(additional_NR_properties)
+        self.fits                     = utils.normalize_optional_path(fits)
         self.outdir                   = outdir
-        self.sxs_installed_version    = sxs_installed_version
 
         self.injection_noise          = None # TODO: reimplement setting the noise
 
@@ -718,12 +750,11 @@ class NR_simulation():
         elif(self.NR_catalog=='SXS'):
         
             self.download  = download
-            self.sxs_local = sxs_local
             self.q, self.chi1, self.chi2, self.tilt1, self.tilt2, self.ecc, self.Mf, self.af = self.read_SXS_metadata()
             
-            try:
+            if self.additional_NR_properties:
                 self.A_peak_22, self.omg_peak_22, self.A_nr_error, self.A_peak22dotdot = self.load_SXS_addn_metadata(csv_path=self.additional_NR_properties, ID_str=self.NR_ID)
-            except:
+            else:
                 self.A_peak_22, self.omg_peak_22, self.A_nr_error, self.A_peak22dotdot = None, None, None, None
 
             # Build NR waveform and time axis.
@@ -745,7 +776,7 @@ class NR_simulation():
                         
                         # Set the resolution level if successful
                         self.res_level = res_level_x
-                        print("\n* Resolution found at level: {}\n".format(self.res_level))
+                        print("\n* Resolution found at level: {}".format(self.res_level))
 
                         # Exit the loop if the level is valid and waveform is loaded
                         break
@@ -753,7 +784,7 @@ class NR_simulation():
 
                         # If an error occurs (e.g., file not found or data issues), increment the attempt count
                         attempts += 1
-                        print(f"Error in attempt {attempts} with resolution level {res_level_x}: {e}")
+                        print(f"\n*Error in attempt {attempts} with resolution level {res_level_x}: {e}")
                         
                         # If we reach the maximum number of attempts, break the loop and stop trying
                         if attempts >= max_attempts:
@@ -763,13 +794,12 @@ class NR_simulation():
                 # If a valid resolution level is already set, load the waveform with that resolution level
                 self.t_NR, self.NR_r, self.NR_i = self.read_waveform_lm_from_SXS(self.extrap_order, self.res_level)
 
-
             counter = 1
             while(not(counter==0)):
                 try              : 
                     if(self.res_level-counter==0): raise ValueError("Only a single resolution available.")
                     t_res, NR_r_res, NR_i_res = self.read_waveform_lm_from_SXS(self.extrap_order, self.res_level-counter)
-                    print('Resolution error constructed with resolution level {}'.format(self.res_level-counter))
+                    print('\n* Resolution error constructed with resolution level {}'.format(self.res_level-counter))
                     counter = 0
                 except ValueError: 
                     counter += 1
@@ -777,8 +807,6 @@ class NR_simulation():
 
         elif(self.NR_catalog=='RIT'):
         
-            print('\n\n\nFIXME: figure out extrapolation order and resolution level for RIT\n\n\n')
-
             self.q, self.chi1, self.chi2, self.ecc, self.Mf, self.af, self.A_peak_22, self.omg_peak_22, self.A_nr_error, self.A_peak22dotdot, self.bmrg, self.Emrg, self.Jmrg = self.read_RIT_metadata()
 
             # Build NR waveform and time axis.
@@ -975,7 +1003,6 @@ class NR_simulation():
                 NR_r_err_res, NR_i_err_res = np.abs(self.NR_r-NR_r_res), np.abs(self.NR_i-NR_i_res)
             
                 self.NR_err_cmplx          = NR_r_err_res + 1j * NR_i_err_res
-
 
         elif(self.NR_catalog=='charged_raw'):
             if('constant' in NR_error):
@@ -1314,20 +1341,10 @@ class NR_simulation():
             Final dimensionless spin of the remnant black hole.
 
         """
-        sxs_uploaded_cat_version = "2025.0.10"
-
-        print("\n* SXS package version assumed: {}\n".format(self.sxs_installed_version))
-
-        #FIXME: passing the installed version from config is very error prone. Read it from user env.
-
-        print("Installed SXS version: ", sxs.__version__)
-
-        if self.sxs_installed_version < sxs_uploaded_cat_version: 
-            metadata    = sxs.load("SXS:BBH:{}/Lev/metadata.json".format(self.NR_ID), download=self.download)
-        else:
-            simulations = sxs.load("simulations", local = True, download = False)
-            metadata    = simulations["SXS:BBH:{}".format(self.NR_ID)]
-
+        
+        sim      = sxs.load("SXS:BBH:{}".format(self.NR_ID), download=self.download, auto_supersede=True)
+        metadata = sim.metadata
+        
         tilt1, tilt2  = 0.0, 0.0
 
         q, Mf            = metadata['reference_mass_ratio'], metadata['remnant_mass']
@@ -1391,7 +1408,7 @@ class NR_simulation():
         """
 
                 
-        waveform_NR = Waveform_rit(NR_data_path=self.NR_dir, csv_path=self.additional_NR_properties, ID=self.NR_ID)
+        waveform_NR = Waveform_rit(NR_data_path=self.NR_dir, csv_path=self.additional_NR_properties, fit_path=self.fits, ID=self.NR_ID)
         
         # Read intrinsic parameters
         data        = waveform_NR.load_metadata()
@@ -1580,16 +1597,10 @@ class NR_simulation():
             Imaginary part of the (l,m) mode.
 
         """
-
-        #FIXME: extract user's sxs version
-        sxs_updated_version = "2025.0.10"
-
-        if self.sxs_installed_version < sxs_updated_version:
-            waveform = sxs.load("SXS:BBH:{}/Lev{}/rhOverM_Asymptotic_GeometricUnits_CoM.h5".format(self.NR_ID, LevRes), extrapolation_order=ExtOrd, download=self.download)
-        else:
-            ExtOrd = "N"+str(ExtOrd)
-            waveform = sxs.load("SXS:BBH:{}/Lev{}".format(self.NR_ID, LevRes), extrapolation_order=ExtOrd, download=self.download).h
-
+        
+        sim = sxs.load("SXS:BBH:{}/Lev{}".format(self.NR_ID, LevRes), download=self.download, extrapolation_order=ExtOrd, auto_supersede=True)
+        waveform = sim.h
+        
         time        = waveform.t
         mode_index  = waveform.index(self.l, self.m)
         waveform_lm = waveform[:, mode_index]

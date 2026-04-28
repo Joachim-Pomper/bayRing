@@ -8,7 +8,7 @@ try:                import configparser
 except ImportError: import ConfigParser as configparser
 
 # GW-specific imports
-from pyRing.utils import print_section
+import pyRing.utils as pyRing_utils
 import lal
 import cpnest, cpnest.model
 
@@ -19,6 +19,7 @@ import bayRing.initialise         as initialise
 import bayRing.QNM_utils          as QNM_utils
 import bayRing.inference          as inference
 import bayRing.template_waveforms as template_waveforms
+import bayRing.utils              as utils
 import bayRing.waveform_utils     as wf_utils
 
 # Constants
@@ -27,9 +28,6 @@ twopi = 2.*np.pi
 # Conversions
 C_mt=(lal.MSUN_SI * lal.G_SI) / (lal.C_SI**3) #s, converts a mass expressed in solar masses into a time in seconds
 C_md=(lal.MSUN_SI * lal.G_SI)/(1e6*lal.PC_SI*lal.C_SI**2) #adimensional, converts a mass expressed in solar masses to a distance in Megaparsec
-
-if __name__=='__main__':
-    main()
 
 def main():
 
@@ -56,7 +54,7 @@ def main():
     Config = configparser.ConfigParser()
     Config.read(config_file)
 
-    print_section('Input parameters')
+    pyRing_utils.print_section('Input parameters')
     print(('* Reading config file : `{}`.'.format(config_file)))
     print( '* With sections       : {}.\n'.format(str(Config.sections())))
     print( '* I\'ll be running with the following values:\n')
@@ -77,7 +75,10 @@ def main():
     # Load NR data. #
     # ==============#
 
-    print_section('NR data loading')
+    pyRing_utils.print_section('NR data loading')
+    parameters['Injection-data']['modes-list'] = NR_waveforms.read_fake_NR(parameters['NR-data']['catalog'], parameters['Injection-data']['modes'])
+    for optional_path in ['properties-file', 'fits-file']:
+        parameters['NR-data'][optional_path] = utils.normalize_optional_path(parameters['NR-data'][optional_path])
 
     #NR simulation object
     NR_sim      = NR_waveforms.NR_simulation(parameters['NR-data']['catalog']                       , 
@@ -87,11 +88,14 @@ def main():
                                              parameters['NR-data']['pert-order']                    , 
                                              parameters['NR-data']['dir']                           , 
                                              parameters['NR-data']['properties-file']               ,
+                                             parameters['NR-data']['fits-file']                     ,
+                                             parameters['Injection-data']['modes-list']             , 
+                                             parameters['Injection-data']['times']                  , 
+                                             parameters['Injection-data']['noise']                  , 
+                                             parameters['Injection-data']['tail']                   , 
                                              parameters['NR-data']['l-NR']                          , 
                                              parameters['NR-data']['m']                             , 
                                              parameters['I/O']['outdir']                            ,
-                                             parameters['NR-data']['sxs-installed-version']         , 
-                                             parameters['NR-data']['sxs-local']                     ,   
 
                                              waveform_type  = parameters['NR-data']['waveform-type'], 
                                              download       = parameters['NR-data']['download']     , 
@@ -104,9 +108,20 @@ def main():
                                              t_max_mismatch = parameters['NR-data']['error-t-max']  )
     error       = NR_sim.NR_cpx_err_cut
     NR_metadata = NR_waveforms.read_NR_metadata(NR_sim, parameters['NR-data']['catalog'])
-
-    print_section('Simulation metadata')
+    pyRing_utils.print_section('Simulation metadata')
     for key in NR_metadata.keys(): print('{}: {}'.format(key.ljust(len('omg_peak_22')), NR_metadata[key]))
+
+    if parameters['NR-data']['fits-file']:
+
+        import pandas as pd
+
+        fit_data     = pd.read_csv(parameters['NR-data']['fits-file'])
+        fit_metadata = fit_data.iloc[0].to_dict()
+        pyRing_utils.print_subsection('Fits metadata')
+
+        for key in fit_metadata.keys(): print('{}: {}'.format(key.ljust(len('fit_type')), fit_metadata[key]))
+    else:
+        fit_metadata = None    
 
     # =================#
     # Load Kerr modes. #
@@ -125,19 +140,20 @@ def main():
                                                 parameters['Model']['template']                                            , 
                                                 parameters['Model']['N-DS-modes']                                          , 
                                                 Kerr_modes                                                                 , 
-                                                NR_metadata                                                                , 
+                                                NR_metadata                                                                ,
+                                                fit_metadata                                                               ,  
                                                 qnm_cached                                                                 , 
                                                 parameters['NR-data']['l-NR']                                              , 
                                                 parameters['NR-data']['m']                                                 , 
-                                                tail                      = parameters['Model']['Kerr-tail']                   ,
-                                                tail_modes                = Kerr_tail_modes                                    ,     
-                                                quadratic_modes           = Kerr_quad_modes                                    , 
-                                                const_params              = parameters['NR-data']['add-const']                 , 
+                                                tail                      = parameters['Model']['Kerr-tail']                       ,
+                                                tail_modes                = Kerr_tail_modes                                        ,     
+                                                quadratic_modes           = Kerr_quad_modes                                        , 
+                                                const_params              = parameters['NR-data']['add-const']                     , 
                                                 KerrBinary_version        = parameters['Model']['KerrBinary-version']              ,
                                                 KerrBinary_amp_nc_version = parameters['Model']['KerrBinary-amplitudes-nc-version'],
-                                                TEOB_NR_fit               = parameters['Model']['TEOB-NR-fit']                 ,
-                                                TEOB_template             = parameters['Model']['TEOB-template']               ,
-                                                quad_mode_flag            = parameters['Model']['quad-mode-flag']              
+                                                TEOB_NR_fit               = parameters['Model']['TEOB-NR-fit']                     ,
+                                                TEOB_template             = parameters['Model']['TEOB-template']                   ,
+                                                TEOB_qc_fit_type          = parameters['Model']['TEOB-qc-fit-type']                ,
                                                 )
 
     # ===============#
@@ -169,7 +185,7 @@ def main():
         print('\n* NR-only plotting run-type selected. Exiting.\n')
         exit()
 
-    print_section('Inference')
+    pyRing_utils.print_section('Inference')
 
     #==============================#
     # Inference execution section. #
@@ -178,15 +194,27 @@ def main():
     if(  parameters['I/O']['run-type']=='full'           ): results_object = inference.run_inference(parameters, inference_model)
     elif(parameters['I/O']['run-type']=='post-processing'): results_object = postprocess.read_results_object_from_previous_inference(parameters)
     else                                                  : raise Exception("Unknown run type selected: {}. Exiting.".format(parameters['I/O']['run-type']))
+
+    if parameters['I/O']['run-type']=='full':
+        import pickle
+        if(inference.is_point_estimate_method(parameters['Inference']['method'])):
+            model_samples = [np.array(inference_model.model(results_object))]
+        else:
+            model_samples = [np.array(inference_model.model(p)) for p in results_object]
+        with open(os.path.join(parameters['I/O']['outdir'], 'NR_sim.pkl'), 'wb') as f:
+            pickle.dump([NR_sim, model_samples, wf_model], f)
         
     #=========================#
     # Postprocessing section. #
     #=========================#
 
-    print_section('Post-processing')
+    pyRing_utils.print_section('Post-processing')
 
-    print('\n* Note: except for free damped sinusoids fits, quantities are quoted at the selected peak time.\n')
+    pyRing_utils.print_subsection('Parameters estimates')
+    print('* Note: except for free damped sinusoids fits, quantities are quoted at the selected peak time.\n')
     postprocess.print_point_estimate(results_object, inference_model.access_names(), parameters['Inference']['method'])
+
+    pyRing_utils.print_subsection('Waveform metrics')
     postprocess.l2norm_residual_vs_nr(results_object, inference_model, NR_sim, parameters['I/O']['outdir'])
 
     # postprocess.plot_fancy_residual(NR_sim, wf_model, NR_metadata, results_object, inference_model, parameters['I/O']['outdir'], parameters['Inference']['method'])
@@ -204,8 +232,7 @@ def main():
             elif(parameters['Inference']['sampler']=='cpnest' ): os.system('mv {dir}/Algorithm/nschain*.pdf {dir}/Plots/Chains/.'.format(dir = parameters['I/O']['outdir']))
             
         execution_time = (time.time() - execution_time)/60.0
-        print('\nExecution time (min): {:.2f}\n'.format(execution_time))
-
+        print('* Execution time (min): {:.2f}\n'.format(execution_time))
 
     try   : 
         postprocess.plot_NR_vs_model(NR_sim, wf_model, NR_metadata, results_object, inference_model, parameters['I/O']['outdir'], parameters['Inference']['method'], tail_flag, parameters['I/O']['extract-damping-time-flag']) 
@@ -215,251 +242,20 @@ def main():
         print(f"Waveform reconstruction plot failed with error: {e}")
         traceback.print_exc()    
 
-    try:
-
-        #===============================#
-        # Mismatch computation section. #
-        #===============================#
-
-        # Initialize dictionaries
-        psd_data, acf_data, mismatch_data, optimal_SNR_data, condition_numbers_data = {}, {}, {}, {}, {}
-
-        # Assign GW parameters
-        M, dL, ra, dec, psi = wf_utils.extract_GW_parameters(parameters)
-        t_start_g_true = parameters['Inference']['t-start']
-
-        # Extract estimated t-peak, t_start and t_end
-        t_start_g, t_end_g, t_NR_s, NR_length = wf_utils.extract_NR_params(NR_sim, M)
-
-        # Convert estimated start and end time in seconds
-        t_start, t_end = t_start_g * C_mt * M, t_end_g * C_mt * M
-
-        # Load flags
-        apply_window, compare_TD_FD, clear_directory, C1_flag, mismatch_print_flag, mismatch_section_plot_flag = wf_utils.extract_flags(parameters['Flags'])
-
-        # Load PSD parameters
-        f_min, f_max, dt, delta_f, N_points, n_FFT_points, asd_path, n_iterations_C1, window_sizes_DX, window_sizes_SX, steepness_values, saturation_DX_values, saturation_SX_values, direction = wf_utils.extract_and_compute_psd_parameters(parameters['Mismatch-PSD-settings'], mismatch_print_flag)
-
-        # Choose if iterate or not on N_FFT
-        N_FFT = [N_points] if n_FFT_points == 1 else list(map(int, np.logspace(np.log10(NR_length), np.log10(2*N_points), n_FFT_points)))
-
-        # Choose if cleaning directories or not
-        if clear_directory == 1:
-
-            # Define the directory path
-            smoothing_paths = ["Left_smoothing", "Right_smoothing", "Both_edges_smoothing"]
-            for smoothing_path in smoothing_paths:
-                algorithm_dir = os.path.join(parameters['I/O']['outdir'], "Algorithm/Mismatch", smoothing_path)
-
-                postprocess.clear_directory(algorithm_dir) 
-
-        # Iterate over the number of FFT points
-        for N_fft in N_FFT:
-
-            # Iterate over the smoothing parameters and compute ACF
-            for window_size_DX, window_size_SX, k, saturation_DX, saturation_SX in [(wdx, wsx, s, tdx, tsx) for wdx in window_sizes_DX for wsx in window_sizes_SX for s in steepness_values for tdx in saturation_DX_values for tsx in saturation_SX_values]:
-                    
-                # Consistency check on starting time, end time and f_min 
-                if (t_end-t_start)>1/(f_min+window_size_DX) and direction!='above':
-                    print("Please provide (t_end-t_start) < 1/(f_min+window_size_DX).")
-                    print("Forbidden frequency:",f_min+window_size_DX)
-                    exit()
-
-                try:
-
-                    # Print window parameters
-                    if(apply_window==1):
-                        print(f"\n\n\n* Applying window on the PSD with parameters: w_DX={round(window_size_DX,1)}Hz, w_SX={round(window_size_SX,1)}Hz, k={round(k,1)}, saturation_DX={round(saturation_DX,1)}, saturation_SX={round(saturation_SX,1)}, N_FFT={N_fft}")
-
-                        # Compute PSD and ACF with smoothing at PSD edges
-                        PSD_smoothed, ACF_smoothed = wf_utils.acf_from_asd_with_smoothing(
-                            asd_path,
-                            f_min, f_max,
-                            N_fft,
-                            window_size_DX  = window_size_DX,
-                            window_size_SX  = window_size_SX,
-                            k               = k,
-                            saturation_DX   = saturation_DX,
-                            saturation_SX   = saturation_SX,
-                            direction       = direction,
-                            C1_flag         = C1_flag,
-                            n_iterations_C1 = n_iterations_C1
-                        )
-
-                    else:
-                        print(f"* Computing ACF from PSD without smoothing")
-
-                        # Set a default value of the window parameters for the files to be saved
-                        window_size_DX, window_size_SX, k, saturation_DX, saturation_SX = 0.0, 0.0, 0.0, 1.0, 1.0
-                        window_sizes_DX, window_sizes_SX, steepness_values, saturation_DX_values, saturation_SX_values = [window_size_DX], [window_size_SX], [k], [saturation_DX], [saturation_SX]
-
-                        # Compute PSD and ACF with smoothing at PSD edges
-                        PSD_smoothed, ACF_smoothed = wf_utils.acf_from_asd_no_window_at_edges(
-                            asd_path, f_min, f_max, N_fft
-                        )
-
-                    # Store smoothed PSD/ACF data in dictionaries
-                    psd_data[f"wDX={round(window_size_DX,1)}Hz, wSX={round(window_size_SX,1)}Hz, k={round(k,0)}, satDX={round(saturation_DX,1)}, satSX={round(saturation_SX,1)}, N_FFT={N_fft}"] = PSD_smoothed
-                    acf_data[f"wDX={round(window_size_DX,1)}Hz, wSX={round(window_size_SX,1)}Hz, k={round(k,0)}, satDX={round(saturation_DX,1)}, satSX={round(saturation_SX,1)}, N_FFT={N_fft}"] = ACF_smoothed
-
-                    #-------------------------------------------------- Mismatch computation -------------------------------------------------------#
-
-                    # Truncate ACF to ringdown analysis lenght
-                    t_ACF = np.linspace(0, N_fft*dt, len(ACF_smoothed))
-                    ACF_truncated_NR = postprocess.truncate_and_interpolate_acf(t_ACF, ACF_smoothed, M, t_start_g, t_end_g, t_NR_s, mismatch_print_flag)
-
-                    # Compute mismatch for hplus, hcross
-                    postprocess.compute_mismatch_hplus_hcross(
-                        NR_sim, 
-                        results_object, 
-                        inference_model, 
-                        parameters['I/O']['outdir'],
-                        parameters['Inference']['method'], 
-                        ACF_truncated_NR, N_fft,
-                        M, dL,
-                        t_start_g_true,
-                        f_min, f_max,
-                        asd_path,
-                        window_size_DX, window_size_SX, k,
-                        saturation_DX, saturation_SX,
-                        mismatch_print_flag,
-                        compare_TD_FD
-                    )
-
-                    # Read mismatch results from file
-                    mismatch_filename = f"Mismatch_M_{M}_dL_{dL}_t_s_{round(t_start_g_true,1)}M_wDX_{round(window_size_DX,1)}Hz_wSX_{round(window_size_SX,1)}Hz_k_{round(k,2)}_satDX_{round(saturation_DX,1)}_satSD_{round(saturation_SX,1)}_NFFT_{N_fft}.txt"
-                    mismatch_file = os.path.join(parameters['I/O']['outdir'], 'Algorithm/Mismatch', mismatch_filename)
-
-                    with open(mismatch_file, 'r') as f:
-                        lines = f.readlines()[1:]  # Skip the header
-
-                    # Store mismatch results in a dictionry
-                    mismatch_data[(window_size_DX, window_size_SX, k, saturation_DX, saturation_SX)] = {'real': {}, 'imag': {}}
-                    for line in lines:
-                        perc, component, mismatch = line.strip().split('\t')
-                        perc = int(perc)
-                        mismatch_data[(window_size_DX, window_size_SX, k, saturation_DX, saturation_SX)][component][perc] = float(mismatch)
-
-                    #-------------------------------------------------- optimal SNR computation -------------------------------------------------------#
-
-                    if mismatch_section_plot_flag==1:
-
-                        # Plot truncated ACF
-                        postprocess.plot_acf_interpolated(t_ACF, t_NR_s, ACF_smoothed, ACF_truncated_NR, parameters['I/O']['outdir'], window_size_DX, window_size_SX, k, saturation_DX, saturation_SX, direction)
-                    
-                    # Call compute_mismatch with the subsampled smoothed ACF
-                    postprocess.compute_optimal_SNR(
-                        NR_sim, 
-                        results_object, 
-                        inference_model, 
-                        parameters['I/O']['outdir'],
-                        parameters['Inference']['method'], 
-                        ACF_truncated_NR,
-                        N_fft,
-                        M, dL,
-                        t_start_g_true, t_end_g,
-                        f_min, f_max,
-                        asd_path,
-                        window_size_DX, window_size_SX, k,
-                        saturation_DX, saturation_SX,
-                        compare_TD_FD
-                    )
-
-                    if compare_TD_FD:
-
-                        postprocess.compute_optimal_SNR_compare_TD_FD(
-                            NR_sim, 
-                            results_object, 
-                            inference_model, 
-                            parameters['I/O']['outdir'],
-                            parameters['Inference']['method'], 
-                            ACF_truncated_NR,
-                            ACF_smoothed,
-                            N_fft,
-                            M, dL,
-                            t_start_g_true, t_end_g,
-                            f_min, f_max, delta_f,
-                            asd_path,
-                            window_size_DX, window_size_SX, k,
-                            saturation_DX, saturation_SX
-                        )
-
-                    # Plot mismatch sanity checks
-                    if mismatch_section_plot_flag==1:
-                        postprocess.mismatch_sanity_checks(NR_sim, 
-                                                        results_object, 
-                                                        inference_model, 
-                                                        parameters['I/O']['outdir'],
-                                                        parameters['Inference']['method'],  
-                                                        ACF_truncated_NR,
-                                                        M, dL, t_start_g, t_end_g, window_size_DX, window_size_SX, k)
-
-                    # Read optimal SNR results from file
-                    optimal_SNR_filename = f"Optimal_SNR_M_{M}_dL_{dL}_t_s_{round(t_start_g_true,1)}M_wDX_{round(window_size_DX,1)}Hz_wSX_{round(window_size_SX,1)}Hz_k_{round(k,2)}_satDX_{round(saturation_DX,1)}_satSD_{round(saturation_SX,1)}_NFFT_{N_fft}.txt"
-                    optimal_SNR_file = os.path.join(parameters['I/O']['outdir'], 'Algorithm/Mismatch', optimal_SNR_filename)
-                    with open(optimal_SNR_file, 'r') as f:
-                        lines = f.readlines()[1:]  # Skip the header
-
-                    # Store optimal SNR results in a dictionary
-                    optimal_SNR_data[(window_size_DX, window_size_SX, k, saturation_DX, saturation_SX)] = {'real': {}, 'imag': {}}
-                    for line in lines:
-                        perc, component, optimal_SNR = line.strip().split('\t')
-                        perc = int(perc)
-                        optimal_SNR_data[(window_size_DX, window_size_SX, k, saturation_DX, saturation_SX)][component][perc] = float(optimal_SNR)
-
-                    # Build the output filename
-                    condition_numbers_filename = f"Condition_number_M_{M}_dL_{dL}_t_s_{round(t_start_g_true,1)}M_wDX_{round(window_size_DX,1)}Hz_wSX_{round(window_size_SX,1)}Hz_k_{round(k,2)}_satDX_{round(saturation_DX,1)}_satSD_{round(saturation_SX,1)}_NFFT_{N_fft}.txt"
-                    condition_numbers_file = os.path.join(parameters['I/O']['outdir'], 'Algorithm/Mismatch', condition_numbers_filename)
-
-                    # Compute the condition number
-                    condition_number = wf_utils.compute_condition_number(ACF_truncated_NR)
-
-                    # Write to file (each line: Component <tab> Value)
-                    with open(condition_numbers_file, 'w') as f:
-                        f.write(f"{condition_number}\n")
-
-                    # Store in dictionary for later use if needed
-                    condition_numbers_data[(window_size_DX, window_size_SX, k, saturation_DX, saturation_SX)] = condition_number
-                
-                except Exception as e:
-                    print(f"* Mismatch omputation failed for window_sizes=({window_size_DX, window_size_SX})Hz, k={k}, saturations={(saturation_DX, saturation_SX)}: {e}")
-
-        #----------------------------------------------------------------------------------- Postprocessing --------------------------------------------------------------------------------------------------------------------------#
-
-        if mismatch_section_plot_flag==1:
-
-            # Postprocess plots
-            postprocess.plot_psd_near_fmin_fmax(psd_data, f_min, f_max, window_size_DX, window_size_SX, parameters['I/O']['outdir'], direction)
-            postprocess.plot_psd_and_acf(psd_data, acf_data, asd_path, f_min, f_max, parameters['I/O']['outdir'], direction)
-            postprocess.plot_mismatch_optimal_SNR_condition_number_window_parameters(mismatch_data, optimal_SNR_data, condition_numbers_data, parameters['I/O']['outdir'], direction, M, dL, N_FFT)
-
-            if len(N_FFT) > 1:
-                postprocess.plot_mismatch_optimal_SNR_condition_number_window_parameters(
-                    mismatch_data, optimal_SNR_data, condition_numbers_data,
-                    parameters['I/O']['outdir'], direction, M, dL, N_FFT
-                )
-
-                postprocess.plot_mismatch_vs_NFFT(
-                    N_FFT, N_points,
-                    M, dL, t_start_g_true,
-                    window_DX_list     = window_sizes_DX,
-                    window_SX_list     = window_sizes_SX,
-                    k_list             = steepness_values,
-                    saturation_DX_list = saturation_DX_values,
-                    saturation_SX_list = saturation_SX_values,
-                    outdir             = parameters['I/O']['outdir'], 
-                    direction          = direction
-                )
-    except:
-        print("\n* Mismatch computation failed. Please check the parameters and input data.\n")
+    pyRing_utils.print_subsection(f'Mismatch and SNR computation')
+    postprocess.run_mismatch_and_SNR_computation(NR_sim, results_object, inference_model, parameters, wf_utils)
 
     # Attempt to generate the global corner plot
-    try:
-        postprocess.global_corner(results_object, inference_model.names, parameters['I/O']['outdir'])
-    except Exception as e:
-        print(f"Corner plot failed with error: {e}")
-        traceback.print_exc()
+    if(parameters['Inference']['method']=='Nested-sampler'):
+        try:
+            postprocess.global_corner(results_object, inference_model.names, parameters['I/O']['outdir'])
+        except Exception as e:
+            print(f"Corner plot failed with error: {e}")
+            traceback.print_exc()
 
     # Show plots if the option is enabled
     if parameters['I/O']['show-plots']:
         plt.show()
+
+if __name__=='__main__':
+    main()
