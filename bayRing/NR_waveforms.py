@@ -17,45 +17,6 @@ import pyRing.waveform        as wf
 
 twopi = 2.*np.pi
 
-<<<<<<< HEAD
-def get_sxs_version():
-    """
-    Get the installed version of the sxs package.
-
-    Returns
-    -------
-    str
-        The installed version of sxs.
-    """
-    try:
-        # Use pip to get the version of sxs installed
-        version_output = subprocess.check_output(['pip', 'show', 'sxs'], text=True)
-        for line in version_output.split('\n'):
-            if line.startswith('Version:'):
-                return line.split(' ')[1]
-    except subprocess.CalledProcessError:
-        print("Error while checking sxs version.")
-        return None
-=======
-def read_fake_NR(NR_catalog, fake_NR_modes):
-
-    if(NR_catalog=='fake_NR'):
-
-        fake_NR_modes_string   = fake_NR_modes.replace(',', '_')
-
-        injection_modes_list     = []
-        injection_modes_list_tmp = fake_NR_modes.split(',')
-        for i in range(len(injection_modes_list_tmp)):
-            l_fake_NR,m_fake_NR,n_fake_NR = int(injection_modes_list_tmp[i][0]),int(injection_modes_list_tmp[i][1]),int(injection_modes_list_tmp[i][2])
-            injection_modes_list.append((l_fake_NR,m_fake_NR,n_fake_NR))
-
-    else:
-        fake_NR_modes_string = ''
-        injection_modes_list = None
-
-    return fake_NR_modes_string, injection_modes_list
->>>>>>> main
-
 def read_RWZ_env_simulation_parameters(sim_file):
 
     """
@@ -592,10 +553,6 @@ class NR_simulation():
                  NR_dir                                         , 
                  additional_NR_properties                       ,
                  fits                                           , 
-                 injection_modes_list                           , 
-                 injection_times                                , 
-                 injection_noise                                , 
-                 injection_tail                                 , 
                  l                                              , 
                  m                                              , 
                  outdir                                         , 
