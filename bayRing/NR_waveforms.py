@@ -480,6 +480,8 @@ def read_NR_metadata(NR_sim, NR_catalog):
                     'Mf'    : NR_sim.Mf,
                     'af'    : NR_sim.af,
             }
+        if hasattr(NR_sim, 'fake_NR_complex_amplitudes'):
+            metadata['fake_NR_complex_amplitudes'] = NR_sim.fake_NR_complex_amplitudes
 
     else: raise ValueError("Invalid option for NR catalog: {}".format(NR_catalog))
 
@@ -601,6 +603,7 @@ class NR_simulation():
         if(self.NR_catalog=='FakeNR'):
             
             meta_data, complex_amplitudes = self.read_fake_NR_metadata()
+            self.fake_NR_complex_amplitudes = complex_amplitudes
             self.Mf = meta_data['final-mass']
             self.af = meta_data['final-spin']
             self.qf = meta_data['final-charge']  

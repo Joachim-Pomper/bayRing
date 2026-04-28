@@ -209,6 +209,11 @@ def main():
     print('* Note: except for free damped sinusoids fits, quantities are quoted at the selected peak time.\n')
     postprocess.print_point_estimate(results_object, inference_model.access_names(), parameters['Inference']['method'])
 
+    injection_parameters = {}
+    if(parameters['Inference']['method']=='Nested-sampler' and parameters['NR-data']['catalog']=='FakeNR'):
+        injection_parameters = postprocess.fake_nr_injection_parameters(NR_metadata, inference_model.access_names())
+        postprocess.save_injection_parameters(injection_parameters, parameters['I/O']['outdir'])
+
     pyRing_utils.print_subsection('Waveform metrics')
     postprocess.l2norm_residual_vs_nr(results_object, inference_model, NR_sim, parameters['I/O']['outdir'])
 
@@ -243,7 +248,12 @@ def main():
     # Attempt to generate the global corner plot
     if(parameters['Inference']['method']=='Nested-sampler'):
         try:
-            postprocess.global_corner(results_object, inference_model.names, parameters['I/O']['outdir'])
+            if injection_parameters:
+                postprocess.plot_nested_sampler_posteriors(results_object, inference_model.names, parameters['I/O']['outdir'], injection_parameters)
+            corner_truths = [injection_parameters.get(name, np.nan) for name in inference_model.names]
+            if not injection_parameters:
+                corner_truths = None
+            postprocess.global_corner(results_object, inference_model.names, parameters['I/O']['outdir'], truths=corner_truths)
         except Exception as e:
             print(f"Corner plot failed with error: {e}")
             traceback.print_exc()

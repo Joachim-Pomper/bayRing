@@ -28,6 +28,7 @@ colbYellow = "#CCBB44"
 colbCyan   = "#66CCEE"
 colbPurple = "#AA3377"
 colbGray   = "#BBBBBB"
+colbOrange = "#CC6600"
 
 # Conversions
 C_mt=(lal.MSUN_SI * lal.G_SI) / (lal.C_SI**3) #s, converts a mass expressed in solar masses into a time in seconds
@@ -44,6 +45,35 @@ window_key_index = {
     'saturation_DX': 3,
     'saturation_SX': 4,
 }
+
+def fake_nr_injection_parameters(metadata, names=None):
+
+    complex_amplitudes = metadata.get('fake_NR_complex_amplitudes')
+    if complex_amplitudes is None:
+        return {}
+
+    injections = {
+        'Mf': metadata.get('Mf'),
+        'af': metadata.get('af'),
+        'qf': metadata.get('qf'),
+    }
+
+    for (_, l_ring, m_ring, n), amp in complex_amplitudes.get('kerr_linear_amps', {}).items():
+        suffix = '{}{}{}'.format(l_ring, m_ring, n)
+        injections[f'ln_A_{suffix}'] = np.log(np.abs(amp))
+        injections[f'phi_{suffix}']  = np.angle(amp) % twopi
+
+    for (l_ring, m_ring), tail_params in complex_amplitudes.get('kerr_tail_amps', {}).items():
+        suffix = '{}{}'.format(l_ring, m_ring)
+        injections[f'ln_A_tail_{suffix}'] = np.log(tail_params['A'])
+        injections[f'phi_tail_{suffix}']  = tail_params['phi'] % twopi
+        injections[f'p_tail_{suffix}']    = tail_params['p']
+
+    injections = {key: value for key, value in injections.items() if value is not None}
+    if names is not None:
+        injections = {key: injections[key] for key in names if key in injections}
+
+    return injections
 
 def waveform_parameter_samples(results, method=None):
 
@@ -1719,6 +1749,41 @@ def plot_fancy_reconstruction(NR_sim, template, metadata, results, inference_mod
 
     return
 
+def save_injection_parameters(injections, output):
+
+    if not injections:
+        return
+
+    output_file = os.path.join(output, 'Algorithm', 'Injected_parameters.txt')
+    with open(output_file, 'w') as outfile:
+        outfile.write('#parameter\tinjected_value\n')
+        for name, value in injections.items():
+            outfile.write(f'{name}\t{value}\n')
+
+def plot_nested_sampler_posteriors(x, names, output, injections=None):
+
+    if injections is None:
+        injections = {}
+
+    for name in names:
+        samples = np.array(x[name])
+        if samples.size < 2:
+            continue
+
+        plt.figure(figsize=(7, 5))
+        sns.histplot(samples, stat='density', kde=True, color='darkred', alpha=0.35)
+        plt.axvline(np.percentile(samples, 5),  color='darkred', linestyle='--', lw=1.5, alpha=0.8)
+        plt.axvline(np.median(samples),         color='darkred', linestyle='-',  lw=1.8, alpha=0.9)
+        plt.axvline(np.percentile(samples, 95), color='darkred', linestyle='--', lw=1.5, alpha=0.8)
+        if name in injections:
+            plt.axvline(injections[name], color=colbOrange, linestyle='-', lw=2.2, label='Injection')
+            plt.legend(loc='best')
+        plt.xlabel(name)
+        plt.ylabel('Posterior density')
+        plt.tight_layout()
+        plt.savefig(os.path.join(output, 'Plots', 'Results', f'posterior_{name}.pdf'), bbox_inches='tight')
+        plt.close()
+
 def global_corner(x, names, output, truths=None):
 
     """
@@ -1754,14 +1819,19 @@ def global_corner(x, names, output, truths=None):
         return
 
     fig = plt.figure(figsize=(10,10))
+    truth_values = None
+    if truths is not None:
+        truth_values = np.array(truths, dtype=float)[mask]
+
     C   = corner.corner(samples[:,mask],
                         quantiles     = [0.05, 0.5, 0.95],
-                        labels        = names,
+                        labels        = np.array(names)[mask],
                         color         = 'darkred',
                         show_titles   = True,
                         title_kwargs  = {"fontsize": 12},
                         use_math_text = True,
-                        truths = truths
+                        truths = truth_values,
+                        truth_color = colbOrange
                         )
     plt.savefig(os.path.join(output, 'Plots', 'Results', 'corner.pdf'), bbox_inches='tight')
 
