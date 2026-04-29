@@ -65,6 +65,11 @@ def fake_nr_injection_parameters(metadata, names=None):
         injections[f'phi_tail_{suffix}']  = tail_params['phi'] % twopi
         injections[f'p_tail_{suffix}']    = tail_params['p']
 
+    for (_, l_ring, m_ring, j), amp in complex_amplitudes.get('redshift_amps', {}).items():
+        suffix = '{}{}{}'.format(l_ring, m_ring, j)
+        injections[f'ln_A_rs_{suffix}'] = np.log(np.abs(amp))
+        injections[f'phi_rs_{suffix}']  = np.angle(amp) % twopi
+
     injections = {key: value for key, value in injections.items() if value is not None}
     if names is not None:
         injections = {key: injections[key] for key in names if key in injections}

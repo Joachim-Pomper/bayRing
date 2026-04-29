@@ -1,9 +1,12 @@
 import io
+import cmath
+import math
 import tarfile
 
 import numpy as np
 import pytest
 
+from bayRing import postprocess
 from bayRing import utils
 
 
@@ -40,6 +43,26 @@ def test_filter_dict_by_key_extracts_per_category():
         "linear": {"mass": [1, 2]},
         "quadratic": {"mass": [5, 6]},
     }
+
+
+def test_fake_nr_injection_parameters_include_redshift_modes():
+    metadata = {
+        "fake_NR_complex_amplitudes": {
+            "kerr_linear_amps": {
+                (2, 2, 2, 0): 2.0 * cmath.exp(1j * 0.3),
+            },
+            "redshift_amps": {
+                (2, 2, 2, 0): 3.0 * cmath.exp(1j * 0.4),
+            },
+        },
+    }
+
+    injections = postprocess.fake_nr_injection_parameters(metadata)
+
+    assert abs(injections["ln_A_220"] - math.log(2.0)) < 1e-12
+    assert abs(injections["phi_220"] - 0.3) < 1e-12
+    assert abs(injections["ln_A_rs_220"] - math.log(3.0)) < 1e-12
+    assert abs(injections["phi_rs_220"] - 0.4) < 1e-12
 
 
 def test_find_longest_name_length():

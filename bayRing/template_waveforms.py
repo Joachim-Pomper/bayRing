@@ -168,7 +168,7 @@ class WaveformModel(cpnest.model.Model):
                 redshift_string = 'rs_{}{}{}'.format(l_rs, m_rs, j_rs) 
                 amp_value = utils.get_param_override(fixed_params, params,'ln_A_{}'.format(redshift_string))
                 phi_value = utils.get_param_override(fixed_params, params,'phi_{}'.format(redshift_string))
-            redshift_amps[(2, l_rs, m_rs, j_rs)] = np.exp(amp_value) * np.exp(1j*(phi_value))
+                redshift_amps[(2, l_rs, m_rs, j_rs)] = np.exp(amp_value) * np.exp(1j*(phi_value))
 
         # Read-in quadratic modes.
         if(self.quadratic_modes is not None):
