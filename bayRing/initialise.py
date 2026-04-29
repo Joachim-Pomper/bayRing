@@ -2,7 +2,6 @@ import ast, json, os, sys
 try:                import configparser
 except ImportError: import ConfigParser as configparser
 
-import bayRing.QNM_utils as QNM_utils
 import pyRing.utils    as pyRing_utils
 from pyRing.initialise import store_git_info
 
@@ -22,7 +21,7 @@ def set_output(outdir, screen_output, method, config_file, run_type):
         If True, the output is printed on the screen.
 
     method : str
-        Method used to obtain the results with which the results will be obtained. Can be either 'Minimization' or 'Nested-sampler'.
+        Method used to obtain the results with which the results will be obtained.
     
     Returns
     -------
@@ -90,26 +89,25 @@ def read_config(Config):
 
         'NR-data':
         {
-        'download'             : 1,
-        'dir'                  : '',
-        'catalog'              : 'SXS',
-        'sxs-installed-version': '2025.0.10',
-        'sxs-local'            : True,     
-        'ID'                   : '0305',
-        'extrap-order'         : 2,
-        'res-level'            : -1,
-        'res-nx'               : 0,   
-        'res-nl'               : 0,  
-        'pert-order'           : 'lin', 
-        'l-NR'                 : 2,
-        'm'                    : 2,
-        'error'                : 'align-with-mismatch-res-only',
-        'error-t-min'          : 3e-1,
-        'error-t-max'          : 4e-3,
-        'add-const'            : '0.0,0.0',
-        'properties-file'      : '',
-        't-peak-22'            : 0.0,
-        'waveform-type'        : 'strain',
+        'download'         : 1,
+        'dir'              : '',
+        'catalog'          : 'SXS',
+        'ID'               : '0305',
+        'extrap-order'     : 2,
+        'res-level'        : -1,
+        'res-nx'           : 0,   
+        'res-nl'           : 0,  
+        'pert-order'       : 'lin', 
+        'l-NR'             : 2,
+        'm'                : 2,
+        'error'            : 'align-with-mismatch-res-only',
+        'error-t-min'      : 3e-1,
+        'error-t-max'      : 4e-3,
+        'add-const'        : '0.0,0.0',
+        'properties-file'  : '',
+        'fits-file'        : '',
+        't-peak-22'        : 0.0,
+        'waveform-type'    : 'strain',
         },
 
   # TODO: Reimplement injected noise
@@ -127,7 +125,7 @@ def read_config(Config):
         'KerrBinary-amplitudes-nc-version' : ''           ,
         'TEOB-NR-fit'                      : 0            ,
         'TEOB-template'                    : 'qc'         ,
-        'quad-mode-flag'                   : 1            ,    
+        'TEOB-qc-fit-type'                 : 'equal-mass' , 
         },
 
         'Inference':
@@ -145,32 +143,33 @@ def read_config(Config):
         't-end'            : 140.0,
         'dt-scd'           : 0.0  ,
         
-        'min-method'       : 'lm',
-        'min-iter-min'     : 1   ,
+        'min-method'       : 'trf',
         'min-iter-max'     : 1000,
+        'n-random-seeds'   : 16  ,
+        'linear-inversion-eigenvalue-tol': 1e-10,
         },
 
         'Mismatch-PSD-settings':
         {
-        'asd-path'              : ''     ,
-        'obs_time'              : 0.     ,
-        'direction'             : 'below',
-        'window_DX'             : 0.8    ,
-        'window_DX_max'         : 10.0   ,
-        'window_SX'             : 0.8    ,
-        'window_SX_max'         : 10.0   ,
-        'n_window_DX'           : 1      ,
-        'n_window_SX'           : 1      ,
-        'steepness'             : 7.     ,
-        'steepness_max'         : 200.   ,
-        'n_steepness'           : 1      ,
-        'saturation_DX'         : 1.     ,
-        'saturation_DX_max'     : 5.     ,
-        'n_saturation_DX'       : 1      ,
-        'saturation_SX'         : 1.     ,
-        'saturation_SX_max'     : 5.     ,
-        'n_saturation_SX'       : 1      ,
-        'n_FFT_points'          : 1      ,
+        'asd-path'              : ''               ,
+        'obs-time'              : 0.               ,
+        'direction'             : 'below-and-above',
+        'window_DX'             : 0.8              ,
+        'window_DX_max'         : 10.0             ,
+        'window_SX'             : 0.8              ,
+        'window_SX_max'         : 10.0             ,
+        'n_window_DX'           : 1                ,
+        'n_window_SX'           : 1                ,
+        'steepness'             : 7.               ,
+        'steepness_max'         : 200.             ,
+        'n_steepness'           : 1                ,
+        'saturation_DX'         : 1.               ,
+        'saturation_DX_max'     : 5.               ,
+        'n_saturation_DX'       : 1                ,
+        'saturation_SX'         : 1.               ,
+        'saturation_SX_max'     : 5.               ,
+        'n_saturation_SX'       : 1                ,
+        'n_FFT_points'          : 1                ,
         'n_iterations_C1'       : 1      
         },
 
@@ -185,7 +184,7 @@ def read_config(Config):
 
         'Flags': 
         {
-        'apply_window'                 : 0,
+        'apply_window'                 : 1,
         'C1_flag'                      : 1,
         'clear_directory'              : 1,
         'compare_TD_FD'                : 0,
@@ -226,13 +225,14 @@ def read_config(Config):
         if not(parameters['Injection-data']['times']=='from-SXS-NR'):
             raise ValueError("When the error is taken from the corresponding SXS simulation, the times must be taken from the simulation as well.")
     
-    if (parameters['Inference']['method']=='Minimization'): raise ValueError("Minimization is still a work in progress and is not supported yet. Please use the `Nested-sampler` method.")
-
-    if not(parameters['Inference']['method']=='Nested-sampler'):
+    if(parameters['Inference']['method'] in ['Minimization', 'Linear-inversion']):
 
         parameters['Inference']['nlive']   = None
         parameters['Inference']['maxmcmc'] = None
-        parameters['Inference']['nGuess']  = {'A' : parameters['Inference']['nGuess-A'], 'phi' : parameters['Inference']['nGuess-phi']}
+
+    elif not(parameters['Inference']['method']=='Nested-sampler'):
+
+        raise ValueError("Unknown inference method: {}.".format(parameters['Inference']['method']))
 
     if(parameters['NR-data']['catalog'] == 'cbhdb' or parameters['NR-data']['catalog'] == 'charged_raw'): parameters['Model']['charge'] = 1
     else                                                                                                : parameters['Model']['charge'] = 0
@@ -243,21 +243,29 @@ def read_config(Config):
 
     if  (parameters['Model']['template']=='Damped-sinusoids'): 
         parameters['Model']['QNM-modes'] = '{}{}0'.format(parameters['NR-data']['l-NR'], parameters['NR-data']['m']) 
+
     elif(parameters['Model']['template']=='KerrBinary'          ): 
+
         if  (parameters['Model']['KerrBinary-version']=='London2018'): 
             parameters['Model']['QNM-modes'] = '220,221,210,330,331,320,440,430,2-20,2-21,2-10,3-30,3-31,3-20,4-40,4-30'
             if not(parameters['NR-data']['l-NR']==2 or parameters['NR-data']['l-NR']==3 or parameters['NR-data']['l-NR']==4): raise ValueError("The KerrBinary-London template is only available for l=2,3,4")
+        
         elif(parameters['Model']['KerrBinary-version']=='Cheung2023'): 
             parameters['Model']['QNM-modes'] = '220,221,210,211,330,331,320,440,430,550,2-20,2-10'
             if not(parameters['NR-data']['l-NR']==2 or parameters['NR-data']['l-NR']==3 or parameters['NR-data']['l-NR']==4 or parameters['NR-data']['l-NR']==5): raise ValueError("The KerrBinary-Cheung template is only available for l=2,3,4,5")
+        
         elif  (parameters['Model']['KerrBinary-version']=='noncircular'): 
             parameters['Model']['QNM-modes'] = '220,210,330'
             if not(parameters['NR-data']['l-NR']==2 or parameters['NR-data']['l-NR']==3 or parameters['NR-data']['l-NR']==4): raise ValueError("The KerrBinary-noncircular template is only available for l=2,3")  
+    
     elif(parameters['Model']['template']=='TEOBPM'      ):
-        parameters['Model']['QNM-modes'] = '220,221,210,211,330,331,320,321,310,311,440,441,430,431,420,421,410,411,550,551'
+        parameters['Model']['QNM-modes']     = '220,221,210,211,330,331,320,321,310,311,440,441,430,431,420,421,410,411,550,551'
         if not(parameters['NR-data']['l-NR']==2 or parameters['NR-data']['l-NR']==3 or parameters['NR-data']['l-NR']==4  or parameters['NR-data']['l-NR']==5): raise ValueError("The TEOBPM template is only available for l=2,3,4,5")
-
-    print('\n\n\nFIXME: print updated vars\n\n\n')
+        
+        if parameters['Model']['TEOB-NR-fit'] == 0:
+            keytype = type(parameters['Model']['TEOB-qc-fit-type'])
+            try                                                     : parameters['Model']['TEOB-qc-fit-type'] = keytype(Config.get('Model', 'TEOB-qc-fit-type'))
+            except (KeyError, configparser.NoOptionError, TypeError): pass
 
     return parameters
 
@@ -294,10 +302,6 @@ A dot is present at the end of each description line and is not to be intended a
         
         catalog                 NR catalog used. Available options: ['SXS', 'RIT', 'RWZ-env', 'Teukolsky', 'cbhdb', 'charged_raw', 'FakeNR', 'FromH5']. Default: 'SXS'.
         
-        sxs-installed-version   Version of the sxs package.                                                                         Default: "2025.0.10".
-
-        sxs-local               Flag to use the local SXS simulations. If False, the SXS simulations are downloaded.              Default: False.
-
         ID                      Simulation ID to be considered. Example for SXS: 0305. Example for Teukolsky: \
                                 `a_0.7_A_0.141_w_1.4_ingoing_ang_15`.                                                               Default: 0305.
         
@@ -333,8 +337,10 @@ A dot is present at the end of each description line and is not to be intended a
         add-const               Parameter of the complex constant to be added to the fit template. Required to account for spurious \
                                 effects in simulations. Example format: '--add-const A,phi'.                                        Default: '0.0,0.0'.
         
-        properties-file         Path to the file containing additional properties of the NR simulation in `.csv` format. \
-                                Follows the conventions of: `github.com/GCArullo/noncircular_BBH_fits/tree/main/Parameters_to_fit.  Default: ''.
+        properties-file  Path to the file containing additional properties of the NR simulation in `.csv` format. \
+                         Follows the conventions of: `github.com/GCArullo/noncircular_BBH_fits/tree/main/Parameters_to_fit.  Default: ''.
+
+        fits-file       Path to the file containing the fits of the NR simulation.                                           Default: ''.
         
         t-peak-22               Time of the peak of the 22 mode. Used as reference time in KerrBinary model. Must be passed when \
                                 fitting HMs with KerrBinary.                                                                        Default: 0.0.                         
@@ -389,15 +395,15 @@ A dot is present at the end of each description line and is not to be intended a
         TEOB-template                    TEOB template to be used. Available options: ['qc', 'nc']. The 'qc' version is defined in  \
                                          arXiv:1904.09550, arXiv:2001.09082, while the 'nc' in II.C of arXiv:2305.19336.                                                  Default: 'qc'.
 
-        quad_mode_flag                   Flag to include quadrupolar modes in the model when using the TEOB-nc template. \                                 
-                                         
+        TEOB-qc-fit-type                 Type of fit to be used. Available options: ['non_spinning', 'equal_mass'].                                                       Default: None.
+
     *******************************************************
     * Parameters to be passed to the [Inference] section. *
     *******************************************************
 
         For more information about the sampling algorithm, see the respective samplers documentation.
 
-        method           Inference method to be used. Available options: ['Nested-sampler', 'Minimization'].                 Default: 'Nested-sampler'.
+        method           Inference method to be used. Available options: ['Nested-sampler', 'Minimization', 'Linear-inversion']. Default: 'Nested-sampler'.
         
         t-start          Start time of the fit and reference time of amplitudes [M units]. \
             Relative to complex strain amplitude peak time.                                                                  Default: 20.
@@ -426,25 +432,31 @@ A dot is present at the end of each description line and is not to be intended a
                          of live points being substituted at each NS step. Requires N_ev << nlive. \
                          Also n_cpu = nnest+nensemble.                                                                       Default: 1.
 
-        *************************************
-        * Minimization specific parameters. *
-        *************************************  
+        *****************************************
+        * Point-estimate specific parameters.   *
+        *****************************************  
 
             The minimization:
 
                 - is bounded within the selected prior bounds;
                 - is seeded by a starting value, which can be either set by the user, or will be randomly selected within \
                   the prior bounds. In the latter case, a user-given number of seeds will be used and the best one will
-                  be kept to initialize the main minimization loop;
-                - is forced to run for a minimum number of iterations, and to stop after a maximum number of iterations; 
+                  be kept as the point estimate;
+                - is stopped after a maximum number of function evaluations per seed; 
         
-            min-method       Method to be used in the scipy.least_squares() function. Available options: ['lm', 'None'].         Default: 'lm'.
-            
-            min-iter-min     Minimum number of iterations for the minimization algorithm.                                        Default: 1.
+            min-method       Method to be used in the scipy.least_squares() function. Available options: ['trf', 'dogbox']. Default: 'trf'.
             
             min-iter-max     Maximum number of iterations for the minimization algorithm.                                        Default: 1000.
             
-            n-random-seeds   Number of random seeds to be used to initialize the minimization.                                   Default: 1.
+            n-random-seeds   Number of random seeds to be used to initialize the minimization.                                   Default: 16.
+
+            The linear inversion:
+
+                - solves directly for Kerr QNM, quadratic-mode, and fixed-exponent tail complex amplitudes;
+                - requires each tail exponent p_tail_* to be fixed, since tail exponents are nonlinear;
+
+            linear-inversion-eigenvalue-tol
+                             Absolute floor applied to Fisher-matrix eigenvalues in the Kerr linear inversion.                    Default: 1e-10.
 
         
     ****************************************************
@@ -463,13 +475,13 @@ A dot is present at the end of each description line and is not to be intended a
 
         asd-path            Path to the ASD file. Default: https://dcc.ligo.org/ligo-t1800044/public.
 
-        obs_time            Time of observation [s] related to the PSD (T=1/df). Default: 0, and then computed in the code as 1/df.
+        obs-time            Time of observation [s]. If not provided, default is computed as T=1/df, where df is the minimum frequency resolution in the PSD frequency array.
         
-        direction           Where to apply the smoothing in the PSD before doing the FFT. If below, it applies to low frequencies, if above to high frequencies, if below-and-above on both. Default: below.
+        direction           Where to apply the smoothing in the PSD before doing the FFT. If 'below', it applies to low frequencies, if 'above' to high frequencies, if 'below-and-above' on both. Default: 'below-and-above'.
         
         n_FFT_points        Number of iterations for values of the points that are used to compute the PSD. Default: 1.
         
-        n_iterations_C1     Number of iteriations for the C1 algorithm. Default: 1.
+        n_iterations_C1     Number of iteriations for algorithm that transforms functions to their C^1 versions. Default: 1.
         
         window_DX           Minimum window size for smoothing on the right side. Default: 0.8.
         
@@ -506,34 +518,22 @@ A dot is present at the end of each description line and is not to be intended a
     *************************************************
 
         apply_window                Choose wheter to apply window at the edges of the PSD or not. 
-                                    - 1: Apply window with default parameters.
-                                    - 0: Do not apply.
-                                    Default: 0.
+                                    Default: 1.
 
         C1_flag                     Enables or disables C1 fixing on the PSD after smoothing application.
-                                    - 1: Enable C1 iterations.
-                                    - 0: Disable C1 iterations.
                                     Default: 1.
 
         clear_directory             Controls whether the output directory for the smoothing section is cleared before the run.
-                                    - 1: Clear the directory before execution.
-                                    - 0: Keep existing files.
                                     Default: 1.
 
         compare_TD_FD               Enables comparison between Time Domain (TD) and Frequency Domain (FD) mismatches.
-                                    - 1: Compute and compare both TD and FD mismatches.
-                                    - 0: Skip comparison.
                                     Default: 0.                     
 
         mismatch_print_flag         Determines whether to print mismatch information (e.g. the scalar products involved in the mismatch).
-                                    - 1: Print mismatch values.
-                                    - 0: Do not print mismatch values.
                                     Default: 0.
 
         mismatch_section_plot_flag  
                                     Determines whether to plot sanity check plots regarding the mismatch section (for instance, the windowed PSD vs the original one).
-                                    - 1: Generate and save mismatch section plots.
-                                    - 0: Do not generate plots.
                                     Default: 0.    
 
     ********************************************************************
