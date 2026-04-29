@@ -32,6 +32,7 @@ class FakeWaveform:
         self.tail = 0
         self.tail_modes = []
         self.quadratic_modes = None
+        self.redshift_modes = None
         self.l_NR = 2
         self.m_NR = 2
         self.TEOB_qc_fit_type = "equal-mass"
@@ -49,6 +50,7 @@ class FakeLinearKerrWaveform:
         self.tail = 0
         self.tail_modes = []
         self.quadratic_modes = None
+        self.redshift_modes = None
         self.const_params = None
         self.basis = basis
         for key, value in overrides.items():
@@ -60,7 +62,7 @@ class FakeLinearKerrWaveform:
                 return self.basis[key]
         raise KeyError(keys)
 
-    def kerr_waveform_from_components(self, amplitudes=None, tail_amplitudes=None, tail_exponents=None, quadratic_amplitudes=None, include_const=True):
+    def kerr_waveform_from_components(self, amplitudes=None, tail_amplitudes=None, tail_exponents=None, quadratic_amplitudes=None, redshift_amplitudes=None, include_const=True):
         if amplitudes is None:
             amplitudes = {}
         if tail_amplitudes is None:
@@ -69,12 +71,16 @@ class FakeLinearKerrWaveform:
             tail_exponents = {}
         if quadratic_amplitudes is None:
             quadratic_amplitudes = {}
+        if redshift_amplitudes is None:
+            redshift_amplitudes = {}
 
         waveform = np.zeros(len(next(iter(self.basis.values()))), dtype=np.complex128)
         for mode, amplitude in amplitudes.items():
             waveform += amplitude * self._basis(mode, ("linear", mode))
         for key, amplitude in quadratic_amplitudes.items():
             waveform += amplitude * self._basis(key, ("quadratic", key))
+        for mode, amplitude in redshift_amplitudes.items():
+            waveform += amplitude * self._basis(("redshift", mode), mode)
         for mode, amplitude in tail_amplitudes.items():
             waveform += amplitude * self._basis(("tail", mode, tail_exponents[mode]), ("tail", mode))
 
@@ -194,11 +200,14 @@ def test_dynamic_inference_model_instances_are_pickleable_after_global_lookup_re
         (
             "TEOBPM",
             "qc",
-            {
-                "phi_mrg": [0.0, inference.twopi],
-                "c3A": [-10.0, 10.0],
-                "c3p": [-10.0, 10.0],
-                "c4p": [-10.0, 10.0],
+                {
+                    "phi_mrg": [0.0, inference.twopi],
+                    "t_q_sigmoid": [-4, 10],
+                    "width_sigmoid": [0.5, 40],
+                    "amp_sigmoid": [-5, 5],
+                    "c3A": [-10.0, 10.0],
+                    "c3p": [-10.0, 10.0],
+                    "c4p": [-10.0, 10.0],
             },
         ),
     ],
@@ -342,6 +351,43 @@ def test_kerr_linear_inversion_recovers_two_complex_mode_amplitudes():
     for mode, label in zip(modes, ["220", "221"]):
         complex_amplitude = np.exp(recovered[f"ln_A_{label}"]) * np.exp(1j * recovered[f"phi_{label}"])
         assert complex_amplitude == pytest.approx(true_amplitudes[mode])
+
+
+def test_kerr_linear_inversion_recovers_redshift_mode_amplitudes():
+    if not hasattr(inference.np, "linalg"):
+        pytest.skip("requires real numpy linear algebra")
+
+    linear_mode = (2, 2, 0)
+    redshift_mode = (2, 2, 0)
+    basis = {
+        linear_mode: np.array([1.0 + 0.1j, 0.4 + 1.2j, -0.5 + 0.6j, 0.7 - 0.9j]),
+        ("redshift", redshift_mode): np.array([0.3 - 0.8j, -1.0 + 0.4j, 0.6 + 1.1j, -0.2 + 0.5j]),
+    }
+    true_amplitudes = {
+        "linear": 1.20 * np.exp(1j * 0.35),
+        "redshift": 0.65 * np.exp(1j * 1.7),
+    }
+    waveform = FakeLinearKerrWaveform(
+        basis,
+        Kerr_modes=[linear_mode],
+        redshift_modes=[redshift_mode],
+    )
+    data = (
+        true_amplitudes["linear"] * basis[linear_mode]
+        + true_amplitudes["redshift"] * basis[("redshift", redshift_mode)]
+    )
+    error = np.array([1.0 + 1.3j, 1.2 + 1.5j, 1.4 + 1.6j, 1.1 + 1.7j])
+    names = ["ln_A_220", "phi_220", "ln_A_rs_220", "phi_rs_220"]
+    model = FakeLinearInferenceModel(waveform, data, error, names)
+    parameters = {"Inference": {"linear-inversion-eigenvalue-tol": 1e-12}}
+
+    solution = inference.KerrLinearInversion_Algorithm(model, parameters).solve_likelihood()
+    recovered = dict(zip(names, solution))
+
+    recovered_linear = np.exp(recovered["ln_A_220"]) * np.exp(1j * recovered["phi_220"])
+    recovered_redshift = np.exp(recovered["ln_A_rs_220"]) * np.exp(1j * recovered["phi_rs_220"])
+    assert recovered_linear == pytest.approx(true_amplitudes["linear"])
+    assert recovered_redshift == pytest.approx(true_amplitudes["redshift"])
 
 
 def test_kerr_linear_inversion_rejects_partly_fixed_polar_amplitude():

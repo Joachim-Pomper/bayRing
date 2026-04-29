@@ -84,6 +84,13 @@ class WaveformModel(cpnest.model.Model):
 
     def _apply_waveform_conventions(self, wf_r, wf_i, include_const=True):
 
+        # Change the QNM frequency convention 
+        # pyRing  : h_+ + ih_x = exp(i omega t) with omega_220  = f + 1j/tau
+        # bayRing : h_+ + ih_x = exp(-i omega t) with omega_220 = f - 1j/tau 
+        # with f,tau >0
+        # Attention: This changes phases definition too.
+        # Important for injections or when setting up FromH5 or FakeNR catalog runs. 
+        
         wf_r = np.array(wf_r)
         wf_i = np.array(wf_i)
 
@@ -91,17 +98,17 @@ class WaveformModel(cpnest.model.Model):
             wf_r = wf_r + self.const_r
             wf_i = wf_i + self.const_i
 
-        # UNDERSTAND WHY!!!!
         if not(self.wf_model=='KerrBinary'): wf_r = -wf_r
 
         return wf_r, wf_i
 
-    def kerr_waveform_from_components(self, amplitudes=None, tail_amplitudes=None, tail_exponents=None, quadratic_amplitudes=None, include_const=True):
+    def kerr_waveform_from_components(self, amplitudes=None, tail_amplitudes=None, tail_exponents=None, quadratic_amplitudes=None, redshift_amplitudes=None, include_const=True):
 
         if amplitudes is None: amplitudes = {}
         if tail_amplitudes is None: tail_amplitudes = {}
         if tail_exponents is None: tail_exponents = {}
         if quadratic_amplitudes is None: quadratic_amplitudes = {}
+        if redshift_amplitudes is None: redshift_amplitudes = {}
 
         amps = {}
         for (l_ring, m_ring, n) in self.Kerr_modes:
@@ -128,7 +135,23 @@ class WaveformModel(cpnest.model.Model):
             quad_amps.setdefault(quad_term, {})
             quad_amps[quad_term][((2,l,m,n),(2,l1,m1,n1),(2,l2,m2,n2))] = quadratic_amplitudes[(quad_term, modes)]
 
-        ringdown_model = self._KerrBH_model(amps, tail_parameters=tail_parameters, quadratic_modes=quad_amps)
+        redshift_amps = {}
+        for (l_rs, m_rs, j_rs), redshift_amplitude in redshift_amplitudes.items():
+            redshift_amps[(2, l_rs, m_rs, j_rs)] = redshift_amplitude
+            # The parent is the ordinary Kerr QNM with the same (l, m) as the redshift mode.
+            parent_modes = [mode for mode in self.Kerr_modes if mode[0] == l_rs and mode[1] == m_rs]
+            if parent_modes:
+                parent_l, parent_m, parent_n = parent_modes[0]
+                # pyRing's redshift block expects the parent linear mode to be present.
+                # A zero amplitude initializes that parent without changing the waveform.
+                amps.setdefault((2, parent_l, parent_m, parent_n), 0.0 + 0.0j)
+
+        ringdown_model = self._KerrBH_model(
+            amps,
+            tail_parameters=tail_parameters,
+            quadratic_modes=quad_amps,
+            redshift_modes=redshift_amps,
+        )
         _, _, _, wf_r, wf_i = ringdown_model.waveform(self.t_NR)
         wf_r, wf_i = self._apply_waveform_conventions(wf_r, wf_i, include_const=include_const)
 
@@ -438,11 +461,4 @@ class WaveformModel(cpnest.model.Model):
         if not(self.wf_model=='Kerr'):
             self.wf_r, self.wf_i = self._apply_waveform_conventions(self.wf_r, self.wf_i)
 
-        # Change the QNM frequency convention 
-        # pyRing  : h_+ + ih_x = exp(i omega t) with omega_220  = f + 1j/tau
-        # bayRing : h_+ + ih_x = exp(-i omega t) with omega_220 = f - 1j/tau 
-        # with f,tau >0
-        # Attention: This changes phases definition too.
-        # Important for injections or when setting up FromH5 or FakeNR catalog runs. 
-        # TODO: Double check that statement
         return self.wf_r + 1j * self.wf_i

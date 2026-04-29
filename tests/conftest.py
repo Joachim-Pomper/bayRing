@@ -172,6 +172,11 @@ class _FakeNumpy(types.ModuleType):
             return _FakeArray(math.sqrt(v) for v in values)
         return math.sqrt(values)
 
+    def log(self, values):
+        if isinstance(values, _FakeArray):
+            return _FakeArray(math.log(v) for v in values)
+        return math.log(values)
+
     def angle(self, values):
         if isinstance(values, _FakeArray):
             return _FakeArray(math.atan2(v.imag if isinstance(v, complex) else 0.0, v.real if isinstance(v, complex) else v) for v in values)

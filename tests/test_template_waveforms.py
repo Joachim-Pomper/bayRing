@@ -104,6 +104,30 @@ def test_kerr_waveform_activates_charge_when_q_present(monkeypatch):
     assert result == "charged"
 
 
+def test_kerr_waveform_from_components_adds_zero_parent_for_redshift(monkeypatch):
+    model = _build_model()
+    captured = {}
+
+    class FakeRingdown:
+        def waveform(self, times):
+            return None, None, None, np.array([1.0, 2.0]), np.array([0.5, 1.5])
+
+    def fake_kerrbh_model(amps, tail_parameters=None, quadratic_modes=None, redshift_modes=None):
+        captured["amps"] = amps
+        captured["redshift_modes"] = redshift_modes
+        return FakeRingdown()
+
+    monkeypatch.setattr(model, "_KerrBH_model", fake_kerrbh_model)
+
+    model.kerr_waveform_from_components(
+        redshift_amplitudes={(2, 2, 0): 3.0 + 0.0j},
+        include_const=False,
+    )
+
+    assert captured["amps"][(2, 2, 2, 0)] == 0.0 + 0.0j
+    assert captured["redshift_modes"][(2, 2, 2, 0)] == 3.0 + 0.0j
+
+
 def test_kerrbinary_waveform_passes_filtered_modes(monkeypatch):
     model = _build_model()
 

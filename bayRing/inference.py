@@ -869,6 +869,7 @@ class KerrLinearInversion_Algorithm():
             'linear'   : {},
             'tail'     : {'amplitudes': {}, 'exponents': {}},
             'quadratic': {},
+            'redshift' : {},
         }
 
         for mode in self.inference_model.wf_model.Kerr_modes:
@@ -896,6 +897,21 @@ class KerrLinearInversion_Algorithm():
                         solve_components.append({'kind': 'quadratic', 'key': key, 'ln_A_name': ln_A_name, 'phi_name': phi_name})
                     else:
                         fixed_components['quadratic'][key] = self._fixed_complex_amplitude(ln_A_name, phi_name)
+
+        if self.inference_model.wf_model.redshift_modes is not None:
+            for redshift_mode in self.inference_model.wf_model.redshift_modes:
+                l_rs, m_rs, j_rs = redshift_mode
+                redshift_string = 'rs_{}{}{}'.format(l_rs, m_rs, j_rs)
+                ln_A_name       = 'ln_A_{}'.format(redshift_string)
+                phi_name        = 'phi_{}'.format(redshift_string)
+                status          = self._component_status(ln_A_name, phi_name)
+
+                if status == 'free':
+                    solve_components.append(
+                        {'kind': 'redshift', 'mode': redshift_mode, 'ln_A_name': ln_A_name, 'phi_name': phi_name}
+                    )
+                else:
+                    fixed_components['redshift'][redshift_mode] = self._fixed_complex_amplitude(ln_A_name, phi_name)
 
         if self.inference_model.wf_model.tail:
             for tail_mode in self.inference_model.wf_model.tail_modes:
@@ -941,6 +957,7 @@ class KerrLinearInversion_Algorithm():
             tail_amplitudes      = components.get('tail', {}).get('amplitudes', {}),
             tail_exponents       = components.get('tail', {}).get('exponents', {}),
             quadratic_amplitudes = components.get('quadratic', {}),
+            redshift_amplitudes  = components.get('redshift', {}),
             include_const        = include_const,
         )
 
@@ -950,12 +967,15 @@ class KerrLinearInversion_Algorithm():
             'linear'   : {},
             'tail'     : {'amplitudes': {}, 'exponents': self.fixed_components['tail']['exponents']},
             'quadratic': {},
+            'redshift' : {},
         }
 
         if component['kind'] == 'linear':
             amplitudes['linear'][component['mode']] = amplitude
         elif component['kind'] == 'quadratic':
             amplitudes['quadratic'][component['key']] = amplitude
+        elif component['kind'] == 'redshift':
+            amplitudes['redshift'][component['mode']] = amplitude
         elif component['kind'] == 'tail':
             amplitudes['tail']['amplitudes'][component['tail_mode']] = amplitude
         else:
@@ -969,6 +989,7 @@ class KerrLinearInversion_Algorithm():
             len(self.fixed_components['linear'])==0
             and len(self.fixed_components['tail']['amplitudes'])==0
             and len(self.fixed_components['quadratic'])==0
+            and len(self.fixed_components['redshift'])==0
         ):
             return np.zeros(len(self.inference_model.data), dtype=np.complex128)
 
