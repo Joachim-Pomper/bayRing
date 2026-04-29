@@ -210,9 +210,11 @@ def main():
     postprocess.print_point_estimate(results_object, inference_model.access_names(), parameters['Inference']['method'])
 
     injection_parameters = {}
-    if(parameters['Inference']['method']=='Nested-sampler' and parameters['NR-data']['catalog']=='FakeNR'):
-        injection_parameters = postprocess.fake_nr_injection_parameters(NR_metadata, inference_model.access_names())
+    if(parameters['NR-data']['catalog']=='FakeNR'):
+        all_injection_parameters = postprocess.fake_nr_all_injection_parameters(NR_metadata)
+        injection_parameters = {key: all_injection_parameters[key] for key in inference_model.access_names() if key in all_injection_parameters}
         postprocess.save_injection_parameters(injection_parameters, parameters['I/O']['outdir'])
+        postprocess.save_injection_comparison(results_object, inference_model.access_names(), parameters['Inference']['method'], all_injection_parameters, parameters['I/O']['outdir'])
 
     pyRing_utils.print_subsection('Waveform metrics')
     postprocess.l2norm_residual_vs_nr(results_object, inference_model, NR_sim, parameters['I/O']['outdir'])

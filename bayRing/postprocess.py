@@ -52,11 +52,7 @@ def fake_nr_injection_parameters(metadata, names=None):
     if complex_amplitudes is None:
         return {}
 
-    injections = {
-        'Mf': metadata.get('Mf'),
-        'af': metadata.get('af'),
-        'qf': metadata.get('qf'),
-    }
+    injections = {}
 
     for (_, l_ring, m_ring, n), amp in complex_amplitudes.get('kerr_linear_amps', {}).items():
         suffix = '{}{}{}'.format(l_ring, m_ring, n)
@@ -74,6 +70,104 @@ def fake_nr_injection_parameters(metadata, names=None):
         injections = {key: injections[key] for key in names if key in injections}
 
     return injections
+
+def fake_nr_all_injection_parameters(metadata):
+
+    return fake_nr_injection_parameters(metadata)
+
+def _parameter_difference(name, inferred, injected):
+
+    difference = inferred - injected
+    if name.startswith('phi'):
+        difference = (difference + np.pi) % twopi - np.pi
+
+    return difference
+
+def _format_significant(value, digits):
+
+    return '{:.{}g}'.format(value, digits)
+
+def save_injection_comparison(results_object, names, method, injections, output):
+
+    output_file = os.path.join(output, 'Algorithm', 'Injection_comparison.txt')
+    rows = []
+    nested_sampler = method == 'Nested-sampler'
+    recovered_names = set(names)
+    injected_names  = set(injections)
+    ordered_names   = list(names) + sorted(injected_names - recovered_names)
+
+    for name in ordered_names:
+
+        has_recovered = name in recovered_names
+        has_injected  = name in injected_names
+
+        if has_recovered and nested_sampler:
+            samples  = np.array(results_object[name])
+            inferred = np.median(samples)
+            p5       = np.percentile(samples, 5)
+            p95      = np.percentile(samples, 95)
+            error = '-{} +{}'.format(
+                _format_significant(inferred - p5, 3),
+                _format_significant(p95 - inferred, 3),
+            )
+        elif has_recovered:
+            inferred = float(np.asarray(results_object[name]))
+            error = 'N/A'
+        else:
+            inferred = None
+            error = 'N/A'
+
+        if has_injected:
+            injected = injections[name]
+        else:
+            injected = None
+
+        if has_recovered and has_injected:
+            difference = _parameter_difference(name, inferred, injected)
+            if nested_sampler:
+                in_interval = str(p5 <= injected <= p95)
+            else:
+                in_interval = 'N/A'
+        else:
+            difference = None
+            in_interval = 'N/A'
+
+        rows.append((
+            name,
+            inferred,
+            injected,
+            difference,
+            error,
+            in_interval,
+        ))
+
+    with open(output_file, 'w') as outfile:
+        outfile.write('# Comparison between inferred and injected FakeNR parameters.\n')
+        if nested_sampler:
+            outfile.write('# Inferred values are posterior medians; errors are median-5% and +95%-median.\n')
+        else:
+            outfile.write('# Inferred values are point estimates from the selected inference method.\n')
+
+        if rows:
+            outfile.write(
+                '{:<24s} {:>14s} {:>14s} {:>14s} {:>21s} {:>12s}\n'.format(
+                    'parameter', 'inferred', 'injected', 'difference', 'error_5_95', 'inj_in_CI'
+                )
+            )
+            outfile.write('{}\n'.format('-' * 103))
+            for name, inferred, injected, difference, error, in_interval in rows:
+                outfile.write(
+                    '{:<24s} {:>14s} {:>14s} {:>14s} {:>21s} {:>12s}\n'.format(
+                        name,
+                        _format_significant(inferred, 6) if inferred is not None else 'N/A',
+                        _format_significant(injected, 6) if injected is not None else 'N/A',
+                        _format_significant(difference, 3) if difference is not None else 'N/A',
+                        error,
+                        in_interval
+                    )
+                )
+        else:
+            outfile.write('# No injected parameters overlap with the inferred parameters.\n')
 
 def waveform_parameter_samples(results, method=None):
 
@@ -1756,9 +1850,9 @@ def save_injection_parameters(injections, output):
 
     output_file = os.path.join(output, 'Algorithm', 'Injected_parameters.txt')
     with open(output_file, 'w') as outfile:
-        outfile.write('#parameter\tinjected_value\n')
+        outfile.write('{:<24s} {:>14s}\n'.format('# parameter', 'injected_value'))
         for name, value in injections.items():
-            outfile.write(f'{name}\t{value}\n')
+            outfile.write('{:<24s} {:>14s}\n'.format(name, _format_significant(value, 6)))
 
 def plot_nested_sampler_posteriors(x, names, output, injections=None):
 
